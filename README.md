@@ -8,7 +8,6 @@ The core philosophy: hook in any function at runtime with before/after/replace s
 
 - Polyhook2 (vendored)
 - LibClang
-- Lua (Optional, see [the building guide](#building))
 - Python 3.8+
 
 ## Architecture

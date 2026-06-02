@@ -7,7 +7,6 @@
 - [Polyhook2](https://github.com/stevemk14ebr/PolyHook_2_0)
 - [libclang](https://clang.llvm.org/docs/Tooling.html) (for codegen, see [Codegen](#codegen))
 - Python 3.8 or newer (for the codegen walker)
-- Lua 5.4 (optional, see [Lua Bindings](#lua-bindings))
 
 ---
 
@@ -86,24 +85,6 @@ python3 tools/codegen/walker.py \
 ```
 
 Generated files should be committed if your project does not run codegen at configure time. See [Consuming Augment](#consuming-augment) for details.
-
----
-
-## Lua Bindings
-
-Enable with `-DAUGMENT_LUA=ON`. Requires Lua 5.4 headers and libraries to be discoverable by CMake.
-
-```bash
-# Ubuntu / Debian
-sudo apt install liblua5.4-dev
-
-# macOS via Homebrew
-brew install lua
-```
-
-```bash
-cmake -B build -DAUGMENT_LUA=ON
-```
 
 ---
 

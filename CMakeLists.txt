@@ -8,7 +8,6 @@ set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 # == OPTIONS ==
-option(AUGMENT_LUA       "Enable Lua scripting bindings"     OFF)
 option(AUGMENT_TESTS     "Build the test suite"              OFF)
 option(AUGMENT_INSTALL   "Enable install targets"            OFF)
 option(BUILD_SHARED_LIBS "Build Augment as a shared library" OFF)
@@ -25,10 +24,6 @@ find_package(Clang REQUIRED
           $ENV{LLVM_DIR}
 )
 
-if(AUGMENT_LUA)
-    find_package(Lua 5.4 REQUIRED)
-endif()
-
 # == TARGETS ==
 add_library(augment)
 add_library(augment::augment ALIAS augment)
@@ -41,16 +36,6 @@ target_sources(augment PRIVATE
     src/platform/sym_resolve.cpp
     src/ctx/ctx.cpp
 )
-
-if(AUGMENT_LUA)
-    target_sources(augment PRIVATE src/layer/lua_bindings.cpp)
-    target_include_directories(augment PRIVATE 
-        ${LUA_INCLUDE_DIR}
-        vendor/sol2/
-    )
-    target_link_libraries(augment PRIVATE ${LUA_LIBRARIES})
-    target_compile_definitions(augment PUBLIC AUGMENT_LUA=1)
-endif()
 
 include(GenerateExportHeader)
 generate_export_header(augment
