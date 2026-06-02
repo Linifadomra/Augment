@@ -37,7 +37,7 @@ typedef struct AugmentContract {
 typedef struct AugmentRegOpts {
     int                priority;
     const char*        tag;
-    const char*        mod_id;
+    const char*        augment_id;
     AugmentContract    contract;
 } AugmentRegOpts;
 
@@ -51,7 +51,7 @@ AUGMENT_API int  augment_register(
     const AugmentRegOpts* opts // nullable, all fields optional
 );
 
-AUGMENT_API void augment_unregister_mod(const char* mod_id);
+AUGMENT_API void augment_unregister_augment(const char* augment_id);
 AUGMENT_API void augment_install_all(void);
 AUGMENT_API void augment_clear(void);
 AUGMENT_API const char* augment_inspect(const char* symbol);

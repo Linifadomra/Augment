@@ -33,7 +33,7 @@ Chain* Registry::get_chain(const std::string& symbol) {
 
 // PUBLIC API
 
-bool Registry::register_hook(const char* symbol, AugmentPhase phase,
+bool Registry::register_augment(const char* symbol, AugmentPhase phase,
                               AugmentFn fn, void* userdata,
                               const AugmentRegOpts* opts) {
     if (!symbol || !fn) return false;
@@ -46,7 +46,7 @@ bool Registry::register_hook(const char* symbol, AugmentPhase phase,
     if (opts) {
         e.priority = opts->priority;
         e.tag      = opts->tag    ? opts->tag    : "";
-        e.mod_id   = opts->mod_id ? opts->mod_id : "";
+        e.augment_id   = opts->augment_id ? opts->augment_id : "";
         e.contract = opts->contract;
     }
 
@@ -57,15 +57,15 @@ bool Registry::register_hook(const char* symbol, AugmentPhase phase,
 
     if (cr.cls == ConflictClass::Hard) {
         std::fprintf(stderr,
-            "[augment] CONFLICT (class 3) mod='%s' symbol='%s': %s\n",
-            e.mod_id.c_str(), symbol, cr.reason);
+            "[augment] CONFLICT (class 3) augment='%s' symbol='%s': %s\n",
+            e.augment_id.c_str(), symbol, cr.reason);
         return false;
     }
 
     if (cr.cls == ConflictClass::Order) {
         std::fprintf(stderr,
-            "[augment] WARNING (class 2) mod='%s' symbol='%s': %s\n",
-            e.mod_id.c_str(), symbol, cr.reason);
+            "[augment] WARNING (class 2) augment='%s' symbol='%s': %s\n",
+            e.augment_id.c_str(), symbol, cr.reason);
     }
 
     chain->add(e);
@@ -91,14 +91,14 @@ bool Registry::register_hook(const char* symbol, AugmentPhase phase,
     return true;
 }
 
-void Registry::unregister_mod(const char* mod_id) {
-    if (!mod_id) return;
-    std::string id = mod_id;
+void Registry::unregister_augment(const char* augment_id) {
+    if (!augment_id) return;
+    std::string id = augment_id;
 
     std::unique_lock lock(m_mutex);
     for (auto it = m_chains.begin(); it != m_chains.end(); ) {
         Chain& c = it->second;
-        c.remove_mod(id);
+        c.remove_augment(id);
         if (c.empty()) {
             if (c.installed && c.saved) {
                 plat::hook_remove(plat::sym_resolve(c.symbol.c_str()));
@@ -176,9 +176,9 @@ const char* Registry::inspect(const char* symbol) {
             e.phase == AUGMENT_PHASE_BEFORE  ? "before"  :
             e.phase == AUGMENT_PHASE_AFTER   ? "after"   : "replace";
         std::snprintf(buf, sizeof(buf),
-            "%s{\"mod\":\"%s\",\"phase\":\"%s\",\"priority\":%d,\"tag\":\"%s\"}",
+            "%s{\"augment\":\"%s\",\"phase\":\"%s\",\"priority\":%d,\"tag\":\"%s\"}",
             i ? "," : "",
-            e.mod_id.c_str(), phase, e.priority, e.tag.c_str());
+            e.augment_id.c_str(), phase, e.priority, e.tag.c_str());
         m_inspect_buf += buf;
     }
     m_inspect_buf += "]";
@@ -192,11 +192,11 @@ extern "C" {
 int augment_register(const char* symbol, AugmentPhase phase,
                      AugmentFn fn, void* userdata,
                      const AugmentRegOpts* opts) {
-    return augment::Registry::instance().register_hook(symbol, phase, fn, userdata, opts) ? 1 : 0;
+    return augment::Registry::instance().register_augment(symbol, phase, fn, userdata, opts) ? 1 : 0;
 }
 
-void augment_unregister_mod(const char* mod_id) {
-    augment::Registry::instance().unregister_mod(mod_id);
+void augment_unregister(const char* augment_id) {
+    augment::Registry::instance().unregister_augment(augment_id);
 }
 
 void augment_install_all(void) {

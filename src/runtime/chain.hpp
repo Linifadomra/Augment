@@ -15,7 +15,7 @@ struct Entry {
     void*           userdata;
     int             priority;
     std::string     tag;
-    std::string     mod_id;
+    std::string     augment_id;
     AugmentContract contract;
 };
 
@@ -28,7 +28,7 @@ struct Chain {
     int                tier     = 0;
 
     void add(const Entry& e);
-    void remove_mod(const std::string& mod_id);
+    void remove_augment(const std::string& augment_id);
     void sort();
 
     int dispatch(AugmentCtx& ctx);

@@ -6,13 +6,13 @@
 static augment::Entry make_entry(AugmentPhase phase, AugmentFn fn,
                                   void* userdata = nullptr,
                                   int priority = 0,
-                                  const char* mod_id = "test_mod") {
+                                  const char* augment_id = "test_mod") {
     augment::Entry e{};
     e.phase    = phase;
     e.fn       = fn;
     e.userdata = userdata;
     e.priority = priority;
-    e.mod_id   = mod_id;
+    e.augment_id   = augment_id;
     return e;
 }
 
@@ -123,7 +123,7 @@ static void test_priority_order() {
     std::printf("PASS test_priority_order\n");
 }
 
-static void test_remove_mod() {
+static void test_remove_augment() {
     augment::Chain chain;
     chain.symbol = "Test::fn";
 
@@ -138,14 +138,14 @@ static void test_remove_mod() {
         *static_cast<bool*>(ud) = true;
     }, &mod_b_ran, 0, "mod_b"));
 
-    chain.remove_mod("mod_a");
+    chain.remove_augment("mod_a");
 
     auto ctx = make_ctx();
     chain.dispatch(ctx);
 
     assert(!mod_a_ran);
     assert(mod_b_ran);
-    std::printf("PASS test_remove_mod\n");
+    std::printf("PASS test_remove_augment\n");
 }
 
 static void test_replace_count() {
@@ -169,7 +169,7 @@ int main() {
     test_after_always_runs();
     test_replace_skips_original();
     test_priority_order();
-    test_remove_mod();
+    test_remove_augment();
     test_replace_count();
     std::printf("--- all passed ---\n");
     return 0;

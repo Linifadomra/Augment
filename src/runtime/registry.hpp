@@ -12,11 +12,11 @@ namespace augment {
 class Registry {
 public:
     // Returns false and logs on hard conflict. Warns on order conflict.
-    bool        register_hook(const char* symbol, AugmentPhase phase,
+    bool        register_augment(const char* symbol, AugmentPhase phase,
                               AugmentFn fn, void* userdata,
                               const AugmentRegOpts* opts);
 
-    void        unregister_mod(const char* mod_id);
+    void        unregister_augment(const char* augment_id);
     void        install_all();
     void        clear();
     const char* inspect(const char* symbol);

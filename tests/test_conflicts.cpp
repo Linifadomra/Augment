@@ -7,13 +7,13 @@ static void noop_fn(AugmentCtx*, void*) {}
 
 static augment::Entry make_entry(AugmentPhase phase,
                                   int priority = 0,
-                                  const char* mod_id = "mod_a",
+                                  const char* augment_id = "mod_a",
                                   AugmentContract contract = {}) {
     augment::Entry e{};
     e.phase    = phase;
     e.fn       = noop_fn;
     e.priority = priority;
-    e.mod_id   = mod_id;
+    e.augment_id   = augment_id;
     e.contract = contract;
     return e;
 }

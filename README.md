@@ -1,6 +1,7 @@
 # Augment
 
-Mixin-based modding framework written in C++ without sacrificing performance or stability. 
+Mixin-based patching framework written in C++ without sacrificing performance or stability. 
+These patches are called "augments" ;).
 
 The core philosophy: hook in any function at runtime with before/after/replace semantics, with no hooks to maintain in the codebase, no annotations, and little runtime overhead.
 

@@ -7,10 +7,10 @@
 
 static void noop_fn(AugmentCtx*, void*) {}
 
-static AugmentRegOpts make_opts(const char* mod_id, int priority = 0,
+static AugmentRegOpts make_opts(const char* augment_id, int priority = 0,
                                  AugmentContract contract = {}) {
     AugmentRegOpts opts{};
-    opts.mod_id   = mod_id;
+    opts.augment_id   = augment_id;
     opts.priority = priority;
     opts.contract = contract;
     return opts;
@@ -27,7 +27,7 @@ struct RegistryGuard {
 static void test_register_succeeds() {
     RegistryGuard g;
     auto opts = make_opts("mod_a");
-    bool ok = augment::Registry::instance().register_hook(
+    bool ok = augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_BEFORE, noop_fn, nullptr, &opts);
     assert(ok);
     std::printf("PASS test_register_succeeds\n");
@@ -35,7 +35,7 @@ static void test_register_succeeds() {
 
 static void test_register_null_symbol_fails() {
     RegistryGuard g;
-    bool ok = augment::Registry::instance().register_hook(
+    bool ok = augment::Registry::instance().register_augment(
         nullptr, AUGMENT_PHASE_BEFORE, noop_fn, nullptr, nullptr);
     assert(!ok);
     std::printf("PASS test_register_null_symbol_fails\n");
@@ -43,7 +43,7 @@ static void test_register_null_symbol_fails() {
 
 static void test_register_null_fn_fails() {
     RegistryGuard g;
-    bool ok = augment::Registry::instance().register_hook(
+    bool ok = augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_BEFORE, nullptr, nullptr, nullptr);
     assert(!ok);
     std::printf("PASS test_register_null_fn_fails\n");
@@ -54,9 +54,9 @@ static void test_replace_conflict_rejected() {
     auto opts_a = make_opts("mod_a");
     auto opts_b = make_opts("mod_b");
 
-    bool first = augment::Registry::instance().register_hook(
+    bool first = augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_REPLACE, noop_fn, nullptr, &opts_a);
-    bool second = augment::Registry::instance().register_hook(
+    bool second = augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_REPLACE, noop_fn, nullptr, &opts_b);
 
     assert(first);
@@ -72,9 +72,9 @@ static void test_write_conflict_equal_priority_rejected() {
     auto opts_a = make_opts("mod_a", 5, contract);
     auto opts_b = make_opts("mod_b", 5, contract);
 
-    bool first = augment::Registry::instance().register_hook(
+    bool first = augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_BEFORE, noop_fn, nullptr, &opts_a);
-    bool second = augment::Registry::instance().register_hook(
+    bool second = augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_BEFORE, noop_fn, nullptr, &opts_b);
 
     assert(first);
@@ -90,9 +90,9 @@ static void test_write_conflict_different_priority_allowed() {
     auto opts_a = make_opts("mod_a", 5,  contract);
     auto opts_b = make_opts("mod_b", 10, contract);
 
-    bool first = augment::Registry::instance().register_hook(
+    bool first = augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_BEFORE, noop_fn, nullptr, &opts_a);
-    bool second = augment::Registry::instance().register_hook(
+    bool second = augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_BEFORE, noop_fn, nullptr, &opts_b);
 
     assert(first);
@@ -100,34 +100,34 @@ static void test_write_conflict_different_priority_allowed() {
     std::printf("PASS test_write_conflict_different_priority_allowed\n");
 }
 
-static void test_unregister_mod_removes_entries() {
+static void test_unregister_augment_removes_entries() {
     RegistryGuard g;
     auto opts_a = make_opts("mod_a");
     auto opts_b = make_opts("mod_b");
 
-    augment::Registry::instance().register_hook(
+    augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_BEFORE, noop_fn, nullptr, &opts_a);
-    augment::Registry::instance().register_hook(
+    augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_AFTER, noop_fn, nullptr, &opts_b);
 
-    augment::Registry::instance().unregister_mod("mod_a");
+    augment::Registry::instance().unregister_augment("mod_a");
 
     // mod_b still registered, mod_a gone
     // inspect should only show mod_b
     const char* json = augment::Registry::instance().inspect("Foo::bar");
     assert(std::strstr(json, "mod_b") != nullptr);
     assert(std::strstr(json, "mod_a") == nullptr);
-    std::printf("PASS test_unregister_mod_removes_entries\n");
+    std::printf("PASS test_unregister_augment_removes_entries\n");
 }
 
 static void test_unregister_all_mods_removes_chain() {
     RegistryGuard g;
     auto opts_a = make_opts("mod_a");
 
-    augment::Registry::instance().register_hook(
+    augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_BEFORE, noop_fn, nullptr, &opts_a);
 
-    augment::Registry::instance().unregister_mod("mod_a");
+    augment::Registry::instance().unregister_augment("mod_a");
 
     // chain should be gone entirely
     const char* json = augment::Registry::instance().inspect("Foo::bar");
@@ -152,7 +152,7 @@ static void test_inspect_null_returns_empty() {
 static void test_inspect_contains_registered_mod() {
     RegistryGuard g;
     auto opts = make_opts("mod_a", 10);
-    augment::Registry::instance().register_hook(
+    augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_BEFORE, noop_fn, nullptr, &opts);
 
     const char* json = augment::Registry::instance().inspect("Foo::bar");
@@ -175,7 +175,7 @@ static void test_dispatch_fires_hook() {
     bool fired = false;
     auto opts = make_opts("mod_a");
 
-    augment::Registry::instance().register_hook(
+    augment::Registry::instance().register_augment(
         "Foo::bar", AUGMENT_PHASE_BEFORE,
         [](AugmentCtx*, void* ud) { *static_cast<bool*>(ud) = true; },
         &fired, &opts);
@@ -190,7 +190,7 @@ static void test_dispatch_fires_hook() {
 static void test_c_api_register_and_inspect() {
     RegistryGuard g;
     AugmentRegOpts opts{};
-    opts.mod_id = "mod_c_api";
+    opts.augment_id = "augment_id_c_api";
 
     int ok = augment_register("Foo::bar", AUGMENT_PHASE_AFTER, noop_fn, nullptr, &opts);
     assert(ok);
@@ -201,17 +201,17 @@ static void test_c_api_register_and_inspect() {
     std::printf("PASS test_c_api_register_and_inspect\n");
 }
 
-static void test_c_api_unregister_mod() {
+static void test_c_api_unregister_augment() {
     RegistryGuard g;
     AugmentRegOpts opts{};
-    opts.mod_id = "mod_c_api";
+    opts.augment_id = "augment_c_api";
 
     augment_register("Foo::bar", AUGMENT_PHASE_BEFORE, noop_fn, nullptr, &opts);
-    augment_unregister_mod("mod_c_api");
+    augment_unregister_augment("mod_c_api");
 
     const char* json = augment_inspect("Foo::bar");
     assert(std::strcmp(json, "[]") == 0);
-    std::printf("PASS test_c_api_unregister_mod\n");
+    std::printf("PASS test_c_api_unregister_augment\n");
 }
 
 int main() {
@@ -222,7 +222,7 @@ int main() {
     test_replace_conflict_rejected();
     test_write_conflict_equal_priority_rejected();
     test_write_conflict_different_priority_allowed();
-    test_unregister_mod_removes_entries();
+    test_unregister_augment_removes_entries();
     test_unregister_all_mods_removes_chain();
     test_inspect_unknown_symbol_returns_empty();
     test_inspect_null_returns_empty();
@@ -230,7 +230,7 @@ int main() {
     test_dispatch_no_chain_returns_false();
     test_dispatch_fires_hook();
     test_c_api_register_and_inspect();
-    test_c_api_unregister_mod();
+    test_c_api_unregister_augment();
     std::printf("--- all passed ---\n");
     return 0;
 }

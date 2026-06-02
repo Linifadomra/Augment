@@ -8,11 +8,11 @@ void Chain::add(const Entry& e) {
     dirty = true;
 }
 
-void Chain::remove_mod(const std::string& mod_id) {
+void Chain::remove_augment(const std::string& augment_id) {
     auto prev = entries.size();
     entries.erase(
         std::remove_if(entries.begin(), entries.end(),
-            [&](const Entry& e) { return e.mod_id == mod_id; }),
+            [&](const Entry& e) { return e.augment_id == augment_id; }),
         entries.end()
     );
     if (entries.size() != prev) dirty = true;
