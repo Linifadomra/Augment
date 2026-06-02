@@ -6,7 +6,7 @@ The core philosophy: hook in any function at runtime with before/after/replace s
 
 ## Dependencies
 
-- Polyhook2
+- Polyhook2 (vendored)
 - LibClang
 - Lua (Optional, see [the building guide](#building))
 - Python 3.8+
@@ -27,7 +27,7 @@ Trampoline        ← NOP sled patched on first mixin() call
 Original function ← vanilla C++, zero framework knowledge
 ```
 
-Library structure (built [here](https://tree.nathanfriend.com/?s=(%27op9s!(%27fancy!true~fullPath!false~trailFgSlash!true~rootDot!false)~K(%27K%27A63tHtV8tHtJuitH3EV0E%20modulH%20%7Be.g.W6_codegen%7D3docsOBUILDING.md3FcludeOa6O*a6.hpp8public-facFg%20API3srcOruntime4*0registry5QrXterfaceOplatform48bacRndWbstrac9%20%7Bpolyhook2%20wirFg%2CJym%20Q%7DOctx4Ttext%20primitivH3toolsV0libclang%20walRr5ctx_gen%2C%20hooRdXto%20E3CMaRLists.txtTfigura95Fstalla9Jcript%27)~version!%271%27)*%208%E2%86%90%203%5Cn*4%2F75%20%2B%206ugment7***8%2009tionEcmaRFinHesJ%20sKsource!O3*QrHolveRkeT70conV47*W%20aX%20F%01XWVTRQOKJHFE98765430*)):
+Library structure (built [here](https://tree.nathanfriend.com/?s=(%27opEs!(%27fancy!true~fullPath!false~trailJgSlash!true~rootDot!false)~R(%27R%27A74tKtX9tKtOuitK4FX3F%20modulK%20%7Be.g.Z7_codegV%7D4docsQBUILDING.md4JcludeQa7Q*a7.hpp9public-facJg%20API4srcQruntime5*3registry6TrjterfaceQplatform59backVdZbstracE%20%7BH2%20wirJg%2COym%20T%7DQctx5Wtext%20primitivK4toolsX3libclang%20walYr6ctx_gV%2C%20hooYdjto%20F4vVdor%2FQH_2_0%2F4CMaYLists.txtWfiguraE6JstallaEOcript%27)~version!%271%27)*%209%E2%86%90%204%5Cn*5%2F86%20%2B%207ugmVt8***9%203EtionFcmaYHpolyhookJinKesO%20sQ4*Rsource!TrKolveVenW83conX58*YkeZ%20aj%20J%01jZYXWVTRQOKJHFE9876543*)):
 
 ```
 Augment/
@@ -43,6 +43,8 @@ Augment/
 │   ├── platform/       ← backend abstraction (polyhook2 wiring, sym resolve)
 │   └── ctx/            ← context primitives
 ├── tools/              ← libclang walker + ctx_gen, hooked into cmake
+├── vendor/
+│   └── polyhook_2_0/
 └── CMakeLists.txt      ← configuration + installation script
 ```
 

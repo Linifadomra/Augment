@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- CMake 3.25 or newer
+- CMake 3.17 or newer
 - A C++17-capable compiler (MSVC, Clang, GCC)
 - [Polyhook2](https://github.com/stevemk14ebr/PolyHook_2_0)
 - [libclang](https://clang.llvm.org/docs/Tooling.html) (for codegen, see [Codegen](#codegen))
@@ -12,6 +12,9 @@
 ---
 
 ## Cloning
+
+> [!IMPORTANT]
+> You **MUST** clone submodules recursively, or you will be unable to [configure!](#configuring)
 
 ```bash
 git clone https://github.com/yourorg/augment.git
