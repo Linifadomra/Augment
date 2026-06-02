@@ -1,0 +1,216 @@
+#include "runtime/registry.hpp"
+#include "runtime/conflict.hpp"
+
+#include <mutex>
+#include <cstdio>
+
+// Platform layer hooks implemented in src/platform/
+namespace augment::plat {
+    bool hook_install  (void* target, void* replacement, void** out_original);
+    bool hook_remove   (void* target);
+    void* sym_resolve  (const char* symbol);
+}
+
+namespace augment {
+
+Registry& Registry::instance() {
+    static Registry s_instance;
+    return s_instance;
+}
+
+Chain* Registry::get_or_create_chain(const std::string& symbol) {
+    auto it = m_chains.find(symbol);
+    if (it != m_chains.end()) return &it->second;
+    Chain& c = m_chains[symbol];
+    c.symbol = symbol;
+    return &c;
+}
+
+Chain* Registry::get_chain(const std::string& symbol) {
+    auto it = m_chains.find(symbol);
+    return it != m_chains.end() ? &it->second : nullptr;
+}
+
+// PUBLIC API
+
+bool Registry::register_hook(const char* symbol, AugmentPhase phase,
+                              AugmentFn fn, void* userdata,
+                              const AugmentRegOpts* opts) {
+    if (!symbol || !fn) return false;
+
+    Entry e{};
+    e.phase    = phase;
+    e.fn       = fn;
+    e.userdata = userdata;
+
+    if (opts) {
+        e.priority = opts->priority;
+        e.tag      = opts->tag    ? opts->tag    : "";
+        e.mod_id   = opts->mod_id ? opts->mod_id : "";
+        e.contract = opts->contract;
+    }
+
+    std::unique_lock lock(m_mutex);
+    Chain* chain = get_or_create_chain(symbol);
+
+    ConflictResult cr = conflict_check(*chain, e);
+
+    if (cr.cls == ConflictClass::Hard) {
+        std::fprintf(stderr,
+            "[augment] CONFLICT (class 3) mod='%s' symbol='%s': %s\n",
+            e.mod_id.c_str(), symbol, cr.reason);
+        return false;
+    }
+
+    if (cr.cls == ConflictClass::Order) {
+        std::fprintf(stderr,
+            "[augment] WARNING (class 2) mod='%s' symbol='%s': %s\n",
+            e.mod_id.c_str(), symbol, cr.reason);
+    }
+
+    chain->add(e);
+
+    // if install_all has already been called, install this chain immediately
+    if (m_installed && !chain->installed) {
+        void* target = plat::sym_resolve(symbol);
+        if (target) {
+            void* orig = nullptr;
+            if (plat::hook_install(target, target /* replaced by trampoline */, &orig)) {
+                chain->saved     = orig;
+                chain->installed = true;
+            } else {
+                std::fprintf(stderr,
+                    "[augment] hook_install failed for '%s'\n", symbol);
+            }
+        } else {
+            std::fprintf(stderr,
+                "[augment] sym_resolve failed for '%s'\n", symbol);
+        }
+    }
+
+    return true;
+}
+
+void Registry::unregister_mod(const char* mod_id) {
+    if (!mod_id) return;
+    std::string id = mod_id;
+
+    std::unique_lock lock(m_mutex);
+    for (auto it = m_chains.begin(); it != m_chains.end(); ) {
+        Chain& c = it->second;
+        c.remove_mod(id);
+        if (c.empty()) {
+            if (c.installed && c.saved) {
+                plat::hook_remove(plat::sym_resolve(c.symbol.c_str()));
+                c.installed = false;
+            }
+            it = m_chains.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void Registry::install_all() {
+    std::unique_lock lock(m_mutex);
+    if (m_installed) return;
+    m_installed = true;
+
+    for (auto& [symbol, chain] : m_chains) {
+        if (chain.installed || chain.empty()) continue;
+
+        void* target = plat::sym_resolve(symbol.c_str());
+        if (!target) {
+            std::fprintf(stderr,
+                "[augment] sym_resolve failed for '%s', skipping\n", symbol.c_str());
+            continue;
+        }
+
+        void* orig = nullptr;
+        if (plat::hook_install(target, target /* trampoline wired by platform layer */, &orig)) {
+            chain.saved     = orig;
+            chain.installed = true;
+        } else {
+            std::fprintf(stderr,
+                "[augment] hook_install failed for '%s'\n", symbol.c_str());
+        }
+    }
+}
+
+void Registry::clear() {
+    std::unique_lock lock(m_mutex);
+    for (auto& [symbol, chain] : m_chains) {
+        if (chain.installed) {
+            void* target = plat::sym_resolve(symbol.c_str());
+            if (target) plat::hook_remove(target);
+            chain.installed = false;
+        }
+    }
+    m_chains.clear();
+    m_installed = false;
+}
+
+bool Registry::dispatch(const char* symbol, AugmentCtx& ctx) {
+    std::shared_lock lock(m_mutex);
+    Chain* chain = get_chain(symbol);
+    if (!chain) return false;
+    chain->dispatch(ctx);
+    return true;
+}
+
+const char* Registry::inspect(const char* symbol) {
+    std::shared_lock lock(m_mutex);
+    m_inspect_buf.clear();
+
+    if (!symbol) { m_inspect_buf = "[]"; return m_inspect_buf.c_str(); }
+
+    Chain* chain = get_chain(symbol);
+    if (!chain) { m_inspect_buf = "[]"; return m_inspect_buf.c_str(); }
+
+    chain->sort();
+    m_inspect_buf = "[";
+    char buf[512];
+    for (size_t i = 0; i < chain->entries.size(); ++i) {
+        const Entry& e = chain->entries[i];
+        const char* phase =
+            e.phase == AUGMENT_PHASE_BEFORE  ? "before"  :
+            e.phase == AUGMENT_PHASE_AFTER   ? "after"   : "replace";
+        std::snprintf(buf, sizeof(buf),
+            "%s{\"mod\":\"%s\",\"phase\":\"%s\",\"priority\":%d,\"tag\":\"%s\"}",
+            i ? "," : "",
+            e.mod_id.c_str(), phase, e.priority, e.tag.c_str());
+        m_inspect_buf += buf;
+    }
+    m_inspect_buf += "]";
+    return m_inspect_buf.c_str();
+}
+
+// C API
+
+extern "C" {
+
+int augment_register(const char* symbol, AugmentPhase phase,
+                     AugmentFn fn, void* userdata,
+                     const AugmentRegOpts* opts) {
+    return augment::Registry::instance().register_hook(symbol, phase, fn, userdata, opts) ? 1 : 0;
+}
+
+void augment_unregister_mod(const char* mod_id) {
+    augment::Registry::instance().unregister_mod(mod_id);
+}
+
+void augment_install_all(void) {
+    augment::Registry::instance().install_all();
+}
+
+void augment_clear(void) {
+    augment::Registry::instance().clear();
+}
+
+const char* augment_inspect(const char* symbol) {
+    return augment::Registry::instance().inspect(symbol);
+}
+
+} // extern "C"
+
+} // namespace augment
