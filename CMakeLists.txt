@@ -8,20 +8,25 @@ set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 # == OPTIONS ==
-option(AUGMENT_TESTS     "Build the test suite"              OFF)
-option(AUGMENT_INSTALL   "Enable install targets"            OFF)
-option(BUILD_SHARED_LIBS "Build Augment as a shared library" OFF)
+option(AUGMENT_TESTS            "Build the test suite"              OFF)
+option(AUGMENT_INSTALL          "Enable install targets"            OFF)
+option(BUILD_SHARED_LIBS        "Build Augment as a shared library" OFF)
+# This is defaulted to on because Dobby is in barely any package managers.
+# Remove this entirely or set to OFF once it is.
+option(AUGMENT_USE_FETCHCONTENT "Build Augment using FetchContent"  ON)
 
 # == DEPENDENCIES ==
-include(FetchContent)
-FetchContent_Declare(
-    Dobby
-    GIT_REPOSITORY https://github.com/jmpews/Dobby.git
-    GIT_TAG        master
-)
-set(DOBBY_GENERATE_SHARED OFF CACHE BOOL "" FORCE)
-set(DOBBY_DEBUG          OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(Dobby)
+if(AUGMENT_USE_FETCHCONTENT)
+    include(FetchContent)
+    FetchContent_Declare(
+        Dobby
+        GIT_REPOSITORY https://github.com/jmpews/Dobby.git
+        GIT_TAG        master
+    )
+    set(DOBBY_GENERATE_SHARED OFF CACHE BOOL "" FORCE)
+    set(DOBBY_DEBUG          OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(Dobby)
+endif()
 
 find_package(Clang REQUIRED
     HINTS /usr/lib/llvm/lib/cmake/clang
@@ -39,7 +44,6 @@ target_sources(augment PRIVATE
     src/runtime/conflict.cpp
     src/platform/hook_backend.cpp
     src/platform/sym_resolve.cpp
-    src/ctx/ctx.cpp
 )
 
 include(GenerateExportHeader)
