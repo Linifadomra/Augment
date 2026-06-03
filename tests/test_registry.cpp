@@ -207,7 +207,7 @@ static void test_c_api_unregister_augment() {
     opts.augment_id = "augment_c_api";
 
     augment_register("Foo::bar", AUGMENT_PHASE_BEFORE, noop_fn, nullptr, &opts);
-    augment_unregister_augment("mod_c_api");
+    augment_unregister("mod_c_api");
 
     const char* json = augment_inspect("Foo::bar");
     assert(std::strcmp(json, "[]") == 0);
