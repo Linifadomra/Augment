@@ -10,8 +10,9 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 # == OPTIONS ==
 option(AUGMENT_TESTS            "Build the test suite"              OFF)
 option(AUGMENT_INSTALL          "Enable install targets"            OFF)
+option(AUGMENT_BUILD_EXAMPLES   "Build Augment examples"            OFF)
 option(BUILD_SHARED_LIBS        "Build Augment as a shared library" OFF)
-option(AUGMENT_USE_FETCHCONTENT "Build Augment using FetchContent"  ON)
+option(AUGMENT_USE_FETCHCONTENT "Build Augment using FetchContent"  ON )
 
 # == DEPENDENCIES ==
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/dobby.cmake)
@@ -50,6 +51,11 @@ target_link_libraries(augment
 
 # == Codegen Helper Function ==
 include(cmake/AugmentCodegen.cmake)
+
+# == Examples ==
+if(AUGMENT_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 # == Testing ==
 if(AUGMENT_TESTS)

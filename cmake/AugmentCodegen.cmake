@@ -32,8 +32,8 @@ cmake_minimum_required(VERSION 3.20)
 # Locate the walker script once at include time.
 if(NOT DEFINED AUGMENT_WALKER_SCRIPT)
     set(AUGMENT_WALKER_SCRIPT
-        "${CMAKE_CURRENT_SOURCE_DIR}/tools/augment_walker.py"
-        CACHE FILEPATH "Path to augment_walker.py")
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/walker/walk.py"
+        CACHE FILEPATH "Path to walk.py")
 endif()
 
 # Check Python3 is available.
