@@ -68,7 +68,7 @@ class Param:
     # References become raw pointers; everything else is value.
     def ctx_field_type(self) -> str:
         if self.is_ref:
-            # strip const from stored pointer — modder can mutate
+            # strip const from stored pointer
             base = self.pointee_spelling.replace("const ", "").strip()
             return f"{base}*"
         return self.type_spelling
@@ -348,7 +348,7 @@ def emit_manifest_json(symbols: list[Symbol]) -> str:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Augment codebase walker — emits ctx structs, "
+        description="Augment codebase walker: emits ctx structs, "
                     "trampolines, and symbol manifest from C++ headers.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
@@ -402,7 +402,7 @@ def main():
         all_symbols.extend(syms)
 
     if not all_symbols:
-        print("No hookable symbols found — nothing to emit.")
+        print("No hookable symbols found. Nothing to emit.")
         sys.exit(0 if not errors else 1)
 
     out = Path(args.output_dir)

@@ -67,3 +67,34 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# pytest
+.pytest_cache/
+.cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# mypy / type checkers
+.mypy_cache/
+.ruff_cache/
