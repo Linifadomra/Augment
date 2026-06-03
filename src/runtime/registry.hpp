@@ -44,6 +44,7 @@ public:
 
     void*       before(const char* symbol, AugmentCtx& ctx);
     void        after(const char* symbol, AugmentCtx& ctx);
+    bool        enter(const char* symbol, AugmentCtx& ctx);
 
     static Registry& instance();
 

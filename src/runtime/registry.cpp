@@ -194,6 +194,13 @@ void Registry::after(const char* symbol, AugmentCtx& ctx) {
     if (chain) chain->run_after(ctx);
 }
 
+bool Registry::enter(const char* symbol, AugmentCtx& ctx) {
+    std::shared_lock lock(m_mutex);
+    Chain* chain = get_chain(symbol);
+    if (!chain) return true;
+    return chain->run_before(ctx);
+}
+
 const char* Registry::inspect(const char* symbol) {
     std::shared_lock lock(m_mutex);
     m_inspect_buf.clear();
@@ -235,6 +242,10 @@ void* augment_before(const char* symbol, AugmentCtx* ctx) {
 
 void augment_after(const char* symbol, AugmentCtx* ctx) {
     augment::Registry::instance().after(symbol, *ctx);
+}
+
+int augment_enter(const char* symbol, AugmentCtx* ctx) {
+    return augment::Registry::instance().enter(symbol, *ctx) ? 1 : 0;
 }
 
 int augment_register(const char* symbol, AugmentPhase phase,
