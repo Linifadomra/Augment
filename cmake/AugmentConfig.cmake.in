@@ -1,11 +1,3 @@
 @PACKAGE_INIT@
-
-include(CMakeFindDependencyMacro)
-find_dependency(Clang REQUIRED)
-
-if(@AUGMENT_LUA@)
-    find_dependency(Lua 5.4 REQUIRED)
-endif()
-
 include("${CMAKE_CURRENT_LIST_DIR}/AugmentTargets.cmake")
 check_required_components(Augment)

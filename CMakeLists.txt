@@ -11,8 +11,6 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 option(AUGMENT_TESTS            "Build the test suite"              OFF)
 option(AUGMENT_INSTALL          "Enable install targets"            OFF)
 option(BUILD_SHARED_LIBS        "Build Augment as a shared library" OFF)
-# This is defaulted to on because Dobby is in barely any package managers.
-# Remove this entirely or set to OFF once it is.
 option(AUGMENT_USE_FETCHCONTENT "Build Augment using FetchContent"  ON)
 
 # == DEPENDENCIES ==
@@ -21,22 +19,15 @@ if(AUGMENT_USE_FETCHCONTENT)
     FetchContent_Declare(
         Dobby
         GIT_REPOSITORY https://github.com/jmpews/Dobby.git
-        GIT_TAG        master
+        GIT_TAG        5dfc8546954ce3b3198132ab13fddb89ee92cdd7
     )
     set(DOBBY_GENERATE_SHARED OFF CACHE BOOL "" FORCE)
-    set(DOBBY_DEBUG          OFF CACHE BOOL "" FORCE)
+    set(DOBBY_DEBUG           OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(Dobby)
-
     target_include_directories(dobby INTERFACE
         $<BUILD_INTERFACE:${dobby_SOURCE_DIR}/include>
     )
 endif()
-
-find_package(Clang REQUIRED
-    HINTS /usr/lib/llvm/lib/cmake/clang
-          /usr/lib/llvm-*/lib/cmake/clang
-          $ENV{LLVM_DIR}
-)
 
 # == TARGETS ==
 add_library(augment)
@@ -90,29 +81,24 @@ if(AUGMENT_INSTALL)
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
-
     install(DIRECTORY include/augment
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
-
     install(EXPORT AugmentTargets
-        FILE       AugmentTargets.cmake
-        NAMESPACE  augment::
+        FILE      AugmentTargets.cmake
+        NAMESPACE augment::
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Augment
     )
-
     write_basic_package_version_file(
         "${CMAKE_CURRENT_BINARY_DIR}/AugmentConfigVersion.cmake"
         VERSION       ${PROJECT_VERSION}
         COMPATIBILITY SameMajorVersion
     )
-
     configure_package_config_file(
         cmake/AugmentConfig.cmake.in
         "${CMAKE_CURRENT_BINARY_DIR}/AugmentConfig.cmake"
         INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Augment
     )
-
     install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/AugmentConfig.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/AugmentConfigVersion.cmake"
