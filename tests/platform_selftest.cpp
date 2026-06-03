@@ -1,3 +1,5 @@
+// platform_selftest.cpp
+
 #include <cstdio>
 
 namespace augment::plat {

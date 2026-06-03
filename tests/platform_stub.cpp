@@ -1,5 +1,7 @@
+// platform_stub.cpp
 // Minimal platform stub for registry tests.
 // Satisfies the linker without any real hooking behavior.
+
 namespace augment::plat {
     bool  hook_install(void*, void*, void** out_original) {
         if (out_original) *out_original = nullptr;

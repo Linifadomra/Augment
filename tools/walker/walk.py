@@ -8,7 +8,7 @@ Walks one or more C/C++ headers via libclang and emits:
   3. augment_trampolines.cpp -> generated dispatch wrappers
 
 Usage:
-    python3 augment_walker.py [options] header1.hpp header2.hpp ...
+    python3 walk.py [options] header1.hpp header2.hpp ...
 
 Options:
     --output-dir DIR     Where to write the three output files (default: .)
