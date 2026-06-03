@@ -87,7 +87,7 @@ bool Registry::register_augment(const char* symbol, AugmentPhase phase,
 
     // if install_all has already been called, install this chain immediately
     if (m_installed && !chain->installed) {
-        void* target = plat::sym_resolve(symbol);
+        void* target = resolve_target(symbol);
         if (target) {
             void* orig = nullptr;
             if (plat::hook_install(target, target /* replaced by trampoline */, &orig)) {
@@ -106,6 +106,19 @@ bool Registry::register_augment(const char* symbol, AugmentPhase phase,
     return true;
 }
 
+void Registry::register_ptr(const char* symbol, void* ptr) {
+    if (!symbol || !ptr) return;
+    std::unique_lock lock(m_mutex);
+    Chain* chain = get_or_create_chain(symbol);
+    chain->target_ptr = ptr;
+}
+
+void* Registry::resolve_target(const std::string& symbol) {
+    Chain* chain = get_chain(symbol);
+    if (chain && chain->target_ptr) return chain->target_ptr;
+    return resolve_target(symbol);
+}
+
 void Registry::unregister_augment(const char* augment_id) {
     if (!augment_id) return;
     std::string id = augment_id;
@@ -116,7 +129,7 @@ void Registry::unregister_augment(const char* augment_id) {
         c.remove_augment(id);
         if (c.empty()) {
             if (c.installed && c.saved) {
-                plat::hook_remove(plat::sym_resolve(c.symbol.c_str()));
+                plat::hook_remove(resolve_target(c.symbol));
                 c.installed = false;
             }
             it = m_chains.erase(it);
@@ -134,7 +147,7 @@ void Registry::install_all() {
     for (auto& [symbol, chain] : m_chains) {
         if (chain.installed || chain.empty()) continue;
 
-        void* target = plat::sym_resolve(symbol.c_str());
+        void* target = resolve_target(symbol);
         if (!target) {
             std::fprintf(stderr,
                 "[augment] sym_resolve failed for '%s', skipping\n", symbol.c_str());
@@ -156,7 +169,7 @@ void Registry::clear() {
     std::unique_lock lock(m_mutex);
     for (auto& [symbol, chain] : m_chains) {
         if (chain.installed) {
-            void* target = plat::sym_resolve(symbol.c_str());
+            void* target = resolve_target(symbol);
             if (target) plat::hook_remove(target);
             chain.installed = false;
         }
@@ -212,6 +225,10 @@ int augment_register(const char* symbol, AugmentPhase phase,
                      AugmentFn fn, void* userdata,
                      const AugmentRegOpts* opts) {
     return augment::Registry::instance().register_augment(symbol, phase, fn, userdata, opts) ? 1 : 0;
+}
+
+void augment_register_ptr(const char* symbol, void* ptr) {
+    augment::Registry::instance().register_ptr(symbol, ptr);
 }
 
 void augment_unregister(const char* augment_id) {
