@@ -37,10 +37,11 @@ struct Entry {
 struct Chain {
     std::string        symbol;
     std::vector<Entry> entries;
-    void*              saved    = nullptr;
-    bool               dirty    = false;
-    bool               installed = false;
-    int                tier     = 0;
+    void*              saved      = nullptr;
+    void*              target_ptr = nullptr;
+    bool               dirty      = false;
+    bool               installed  = false;
+    int                tier       = 0;
 
     void add(const Entry& e);
     void remove_augment(const std::string& augment_id);

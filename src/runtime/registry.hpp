@@ -31,6 +31,8 @@ public:
                               AugmentFn fn, void* userdata,
                               const AugmentRegOpts* opts);
 
+    void        register_ptr(const char* symbol, void* ptr);
+
     void        unregister_augment(const char* augment_id);
     void        install_all();
     void        clear();
@@ -45,6 +47,7 @@ public:
 private:
     Chain*      get_or_create_chain(const std::string& symbol); // call under unique_lock
     Chain*      get_chain(const std::string& symbol);           // call under any lock
+    void*       resolve_target(const std::string& symbol);
 
     std::unordered_map<std::string, Chain> m_chains;
     mutable std::shared_mutex              m_mutex;
