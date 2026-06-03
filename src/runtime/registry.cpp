@@ -86,22 +86,8 @@ bool Registry::register_augment(const char* symbol, AugmentPhase phase,
     chain->add(e);
 
     // if install_all has already been called, install this chain immediately
-    if (m_installed && !chain->installed) {
-        void* target = resolve_target(symbol);
-        if (target) {
-            void* orig = nullptr;
-            if (plat::hook_install(target, target /* replaced by trampoline */, &orig)) {
-                chain->saved     = orig;
-                chain->installed = true;
-            } else {
-                std::fprintf(stderr,
-                    "[augment] hook_install failed for '%s'\n", symbol);
-            }
-        } else {
-            std::fprintf(stderr,
-                "[augment] sym_resolve failed for '%s'\n", symbol);
-        }
-    }
+    if (m_installed && !chain->installed)
+        install_chain(symbol, *chain);
 
     return true;
 }
@@ -114,9 +100,33 @@ void Registry::register_ptr(const char* symbol, void* ptr) {
 }
 
 void* Registry::resolve_target(const std::string& symbol) {
-    Chain* chain = get_chain(symbol);
-    if (chain && chain->target_ptr) return chain->target_ptr;
-    return resolve_target(symbol);
+    return plat::sym_resolve(symbol.c_str());
+}
+
+bool Registry::install_chain(const std::string& symbol, Chain& chain) {
+    if (!chain.target_ptr) {
+        std::fprintf(stderr,
+            "[augment] no dispatch trampoline registered for '%s'\n", symbol.c_str());
+        return false;
+    }
+
+    void* target = resolve_target(symbol);
+    if (!target) {
+        std::fprintf(stderr,
+            "[augment] sym_resolve failed for '%s'\n", symbol.c_str());
+        return false;
+    }
+
+    void* orig = nullptr;
+    if (!plat::hook_install(target, chain.target_ptr, &orig)) {
+        std::fprintf(stderr,
+            "[augment] hook_install failed for '%s'\n", symbol.c_str());
+        return false;
+    }
+
+    chain.saved     = orig;
+    chain.installed = true;
+    return true;
 }
 
 void Registry::unregister_augment(const char* augment_id) {
@@ -146,22 +156,7 @@ void Registry::install_all() {
 
     for (auto& [symbol, chain] : m_chains) {
         if (chain.installed || chain.empty()) continue;
-
-        void* target = resolve_target(symbol);
-        if (!target) {
-            std::fprintf(stderr,
-                "[augment] sym_resolve failed for '%s', skipping\n", symbol.c_str());
-            continue;
-        }
-
-        void* orig = nullptr;
-        if (plat::hook_install(target, target /* trampoline wired by platform layer */, &orig)) {
-            chain.saved     = orig;
-            chain.installed = true;
-        } else {
-            std::fprintf(stderr,
-                "[augment] hook_install failed for '%s'\n", symbol.c_str());
-        }
+        install_chain(symbol, chain);
     }
 }
 
@@ -184,6 +179,19 @@ bool Registry::dispatch(const char* symbol, AugmentCtx& ctx) {
     if (!chain) return false;
     chain->dispatch(ctx);
     return true;
+}
+
+void* Registry::before(const char* symbol, AugmentCtx& ctx) {
+    std::shared_lock lock(m_mutex);
+    Chain* chain = get_chain(symbol);
+    if (!chain) return nullptr;
+    return chain->run_before(ctx) ? chain->saved : nullptr;
+}
+
+void Registry::after(const char* symbol, AugmentCtx& ctx) {
+    std::shared_lock lock(m_mutex);
+    Chain* chain = get_chain(symbol);
+    if (chain) chain->run_after(ctx);
 }
 
 const char* Registry::inspect(const char* symbol) {
@@ -219,6 +227,14 @@ extern "C" {
 
 void augment_invoke(const char* symbol, AugmentCtx* ctx) {
     augment::Registry::instance().dispatch(symbol, *ctx);
+}
+
+void* augment_before(const char* symbol, AugmentCtx* ctx) {
+    return augment::Registry::instance().before(symbol, *ctx);
+}
+
+void augment_after(const char* symbol, AugmentCtx* ctx) {
+    augment::Registry::instance().after(symbol, *ctx);
 }
 
 int augment_register(const char* symbol, AugmentPhase phase,

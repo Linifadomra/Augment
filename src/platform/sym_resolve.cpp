@@ -16,6 +16,34 @@
 #include <cstdint>
 #include <cstring>
 
+#if defined(__APPLE__) || defined(__linux__)
+
+#include <cstdlib>
+#include <cxxabi.h>
+
+namespace augment::plat {
+namespace {
+
+bool name_matches(const char* itanium, const char* query) {
+    if (std::strcmp(itanium, query) == 0) return true;
+    if (itanium[0] != '_' || itanium[1] != 'Z') return false;
+
+    int   status = 0;
+    char* dem    = abi::__cxa_demangle(itanium, nullptr, nullptr, &status);
+    if (!dem) return false;
+
+    const char* paren = std::strchr(dem, '(');
+    size_t      n     = paren ? static_cast<size_t>(paren - dem) : std::strlen(dem);
+    bool        ok    = std::strlen(query) == n && std::strncmp(dem, query, n) == 0;
+    std::free(dem);
+    return ok;
+}
+
+} // namespace
+} // namespace augment::plat
+
+#endif
+
 #if defined(__APPLE__)
 
 #include <mach-o/dyld.h>
@@ -83,7 +111,7 @@ void* sym_resolve(const char* symbol) {
         const struct nlist_64& s = img.syms[i];
         if ((s.n_type & N_TYPE) != N_SECT || s.n_value == 0 || s.n_un.n_strx == 0) continue;
         const char* name = img.strs + s.n_un.n_strx;
-        if (name[0] == '_' && std::strcmp(name + 1, symbol) == 0)
+        if (name[0] == '_' && name_matches(name + 1, symbol))
             return reinterpret_cast<void*>(static_cast<uint64_t>(s.n_value) +
                                            static_cast<uint64_t>(img.slide));
     }
@@ -185,7 +213,7 @@ void* sym_resolve(const char* symbol) {
     for (size_t i = 0; i < img.count; ++i) {
         const Elf64_Sym& s = img.syms[i];
         if (s.st_value == 0 || s.st_name == 0) continue;
-        if (std::strcmp(img.strs + s.st_name, symbol) == 0)
+        if (name_matches(img.strs + s.st_name, symbol))
             return reinterpret_cast<void*>(img.bias + s.st_value);
     }
     return nullptr;
