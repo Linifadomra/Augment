@@ -1,0 +1,271 @@
+#include <cstdint>
+#include <cstring>
+
+#if defined(__APPLE__)
+
+#include <mach-o/dyld.h>
+#include <mach-o/loader.h>
+#include <mach-o/nlist.h>
+
+namespace augment::plat {
+
+namespace {
+
+struct image_syms {
+    const struct nlist_64* syms  = nullptr;
+    const char*            strs  = nullptr;
+    uint32_t               count = 0;
+    intptr_t               slide = 0;
+    bool                   ok    = false;
+};
+
+image_syms load_image() {
+    image_syms out;
+    for (uint32_t i = 0; i < _dyld_image_count(); ++i) {
+        auto* hdr = reinterpret_cast<const struct mach_header_64*>(_dyld_get_image_header(i));
+        if (!hdr || hdr->filetype != MH_EXECUTE) continue;
+
+        intptr_t slide = _dyld_get_image_vmaddr_slide(i);
+        const struct symtab_command* symtab = nullptr;
+        uint64_t linkedit = 0;
+
+        auto* lc = reinterpret_cast<const struct load_command*>(hdr + 1);
+        for (uint32_t c = 0; c < hdr->ncmds; ++c) {
+            if (lc->cmd == LC_SEGMENT_64) {
+                auto* seg = reinterpret_cast<const struct segment_command_64*>(lc);
+                if (std::strcmp(seg->segname, "__LINKEDIT") == 0)
+                    linkedit = static_cast<uint64_t>(slide) + seg->vmaddr - seg->fileoff;
+            } else if (lc->cmd == LC_SYMTAB) {
+                symtab = reinterpret_cast<const struct symtab_command*>(lc);
+            }
+            lc = reinterpret_cast<const struct load_command*>(
+                reinterpret_cast<const uint8_t*>(lc) + lc->cmdsize);
+        }
+
+        if (!symtab || !linkedit) continue;
+        out.syms  = reinterpret_cast<const struct nlist_64*>(linkedit + symtab->symoff);
+        out.strs  = reinterpret_cast<const char*>(linkedit + symtab->stroff);
+        out.count = symtab->nsyms;
+        out.slide = slide;
+        out.ok    = true;
+        return out;
+    }
+    return out;
+}
+
+const image_syms& image() {
+    static const image_syms img = load_image();
+    return img;
+}
+
+} // namespace
+
+void* sym_resolve(const char* symbol) {
+    const image_syms& img = image();
+    if (!symbol || !img.ok) return nullptr;
+
+    for (uint32_t i = 0; i < img.count; ++i) {
+        const struct nlist_64& s = img.syms[i];
+        if ((s.n_type & N_TYPE) != N_SECT || s.n_value == 0 || s.n_un.n_strx == 0) continue;
+        const char* name = img.strs + s.n_un.n_strx;
+        if (name[0] == '_' && std::strcmp(name + 1, symbol) == 0)
+            return reinterpret_cast<void*>(static_cast<uint64_t>(s.n_value) +
+                                           static_cast<uint64_t>(img.slide));
+    }
+    return nullptr;
+}
+
+uint64_t func_gap(void* target) {
+    const image_syms& img = image();
+    if (!img.ok) return UINT64_MAX;
+
+    uint64_t at   = reinterpret_cast<uint64_t>(target);
+    uint64_t best = UINT64_MAX;
+    for (uint32_t i = 0; i < img.count; ++i) {
+        const struct nlist_64& s = img.syms[i];
+        if ((s.n_type & N_TYPE) != N_SECT || s.n_value == 0) continue;
+        uint64_t addr = static_cast<uint64_t>(s.n_value) + static_cast<uint64_t>(img.slide);
+        if (addr > at && addr - at < best) best = addr - at;
+    }
+    return best;
+}
+
+} // namespace augment::plat
+
+#elif defined(__linux__)
+
+#include <elf.h>
+#include <link.h>
+
+#include <cstdio>
+#include <cstdlib>
+
+namespace augment::plat {
+
+namespace {
+
+struct image_syms {
+    const Elf64_Sym* syms  = nullptr;
+    const char*      strs  = nullptr;
+    size_t           count = 0;
+    uintptr_t        bias  = 0;
+    bool             ok    = false;
+};
+
+uintptr_t load_bias() {
+    uintptr_t bias = 0;
+    dl_iterate_phdr([](struct dl_phdr_info* info, size_t, void* out) -> int {
+        *static_cast<uintptr_t*>(out) = info->dlpi_addr;
+        return 1;
+    }, &bias);
+    return bias;
+}
+
+image_syms load_image() {
+    image_syms out;
+    FILE* f = std::fopen("/proc/self/exe", "rb");
+    if (!f) return out;
+
+    std::fseek(f, 0, SEEK_END);
+    long size = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+
+    auto* buf = static_cast<uint8_t*>(std::malloc(static_cast<size_t>(size)));
+    if (size <= 0 || !buf || std::fread(buf, 1, static_cast<size_t>(size), f) != static_cast<size_t>(size)) {
+        std::fclose(f);
+        std::free(buf);
+        return out;
+    }
+    std::fclose(f);
+
+    auto* eh = reinterpret_cast<const Elf64_Ehdr*>(buf);
+    if (!eh->e_shoff || !eh->e_shnum) { std::free(buf); return out; }
+
+    auto* sh = reinterpret_cast<const Elf64_Shdr*>(buf + eh->e_shoff);
+    const Elf64_Shdr* symtab = nullptr;
+    for (uint16_t i = 0; i < eh->e_shnum; ++i)
+        if (sh[i].sh_type == SHT_SYMTAB) { symtab = &sh[i]; break; }
+    if (!symtab) { std::free(buf); return out; }
+
+    const Elf64_Shdr& strtab = sh[symtab->sh_link];
+    out.syms  = reinterpret_cast<const Elf64_Sym*>(buf + symtab->sh_offset);
+    out.strs  = reinterpret_cast<const char*>(buf + strtab.sh_offset);
+    out.count = symtab->sh_size / sizeof(Elf64_Sym);
+    out.bias  = load_bias();
+    out.ok    = true;
+    return out;
+}
+
+const image_syms& image() {
+    static const image_syms img = load_image();
+    return img;
+}
+
+} // namespace
+
+void* sym_resolve(const char* symbol) {
+    const image_syms& img = image();
+    if (!symbol || !img.ok) return nullptr;
+
+    for (size_t i = 0; i < img.count; ++i) {
+        const Elf64_Sym& s = img.syms[i];
+        if (s.st_value == 0 || s.st_name == 0) continue;
+        if (std::strcmp(img.strs + s.st_name, symbol) == 0)
+            return reinterpret_cast<void*>(img.bias + s.st_value);
+    }
+    return nullptr;
+}
+
+uint64_t func_gap(void* target) {
+    const image_syms& img = image();
+    if (!img.ok) return UINT64_MAX;
+
+    uint64_t at   = reinterpret_cast<uint64_t>(target);
+    uint64_t best = UINT64_MAX;
+    for (size_t i = 0; i < img.count; ++i) {
+        const Elf64_Sym& s = img.syms[i];
+        if (s.st_value == 0) continue;
+        uint64_t addr = img.bias + s.st_value;
+        if (addr > at && addr - at < best) best = addr - at;
+    }
+    return best;
+}
+
+} // namespace augment::plat
+
+#elif defined(_WIN32)
+
+#include <windows.h>
+
+namespace augment::plat {
+
+namespace {
+
+struct image_syms {
+    uint8_t*                      base = nullptr;
+    const IMAGE_EXPORT_DIRECTORY* exp  = nullptr;
+    bool                          ok   = false;
+};
+
+image_syms load_image() {
+    image_syms out;
+    auto* base = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
+    if (!base) return out;
+
+    auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return out;
+    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) return out;
+
+    const IMAGE_DATA_DIRECTORY& dir =
+        nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+    if (!dir.VirtualAddress) return out;
+
+    out.base = base;
+    out.exp  = reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(base + dir.VirtualAddress);
+    out.ok   = true;
+    return out;
+}
+
+const image_syms& image() {
+    static const image_syms img = load_image();
+    return img;
+}
+
+} // namespace
+
+void* sym_resolve(const char* symbol) {
+    const image_syms& img = image();
+    if (!symbol || !img.ok) return nullptr;
+
+    auto* names = reinterpret_cast<const uint32_t*>(img.base + img.exp->AddressOfNames);
+    auto* ords  = reinterpret_cast<const uint16_t*>(img.base + img.exp->AddressOfNameOrdinals);
+    auto* funcs = reinterpret_cast<const uint32_t*>(img.base + img.exp->AddressOfFunctions);
+    for (uint32_t i = 0; i < img.exp->NumberOfNames; ++i) {
+        const char* name = reinterpret_cast<const char*>(img.base + names[i]);
+        if (std::strcmp(name, symbol) == 0)
+            return img.base + funcs[ords[i]];
+    }
+    return nullptr;
+}
+
+uint64_t func_gap(void* target) {
+    const image_syms& img = image();
+    if (!img.ok) return UINT64_MAX;
+
+    auto* funcs = reinterpret_cast<const uint32_t*>(img.base + img.exp->AddressOfFunctions);
+    uint64_t at   = reinterpret_cast<uint64_t>(target);
+    uint64_t best = UINT64_MAX;
+    for (uint32_t i = 0; i < img.exp->NumberOfFunctions; ++i) {
+        if (!funcs[i]) continue;
+        uint64_t addr = reinterpret_cast<uint64_t>(img.base + funcs[i]);
+        if (addr > at && addr - at < best) best = addr - at;
+    }
+    return best;
+}
+
+} // namespace augment::plat
+
+#else
+#error "augment: no symbol resolver for this platform"
+#endif

@@ -13,10 +13,15 @@ option(AUGMENT_INSTALL   "Enable install targets"            OFF)
 option(BUILD_SHARED_LIBS "Build Augment as a shared library" OFF)
 
 # == DEPENDENCIES ==
-set(AUGMENT_BUILD_SHARED ${BUILD_SHARED_LIBS})
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-add_subdirectory(vendor/polyhook_2_0)
-set(BUILD_SHARED_LIBS ${AUGMENT_BUILD_SHARED} CACHE BOOL "" FORCE)
+include(FetchContent)
+FetchContent_Declare(
+    Dobby
+    GIT_REPOSITORY https://github.com/jmpews/Dobby.git
+    GIT_TAG        master
+)
+set(DOBBY_GENERATE_SHARED OFF CACHE BOOL "" FORCE)
+set(DOBBY_DEBUG          OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(Dobby)
 
 find_package(Clang REQUIRED
     HINTS /usr/lib/llvm/lib/cmake/clang
@@ -54,7 +59,7 @@ target_include_directories(augment
 
 target_link_libraries(augment
     PRIVATE
-        PolyHook_2
+        dobby
 )
 
 # == Codegen Helper Function ==
