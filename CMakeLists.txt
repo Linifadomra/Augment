@@ -26,6 +26,10 @@ if(AUGMENT_USE_FETCHCONTENT)
     set(DOBBY_GENERATE_SHARED OFF CACHE BOOL "" FORCE)
     set(DOBBY_DEBUG          OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(Dobby)
+
+    target_include_directories(dobby INTERFACE
+        $<BUILD_INTERFACE:${dobby_SOURCE_DIR}/include>
+    )
 endif()
 
 find_package(Clang REQUIRED
