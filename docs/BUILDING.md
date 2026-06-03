@@ -4,9 +4,8 @@
 
 - CMake 3.17 or newer
 - A C++17-capable compiler (MSVC, Clang, GCC)
-- [Polyhook2](https://github.com/stevemk14ebr/PolyHook_2_0)
-- [libclang](https://clang.llvm.org/docs/Tooling.html) (for codegen, see [Codegen](#codegen))
-- Python 3.8 or newer (for the codegen walker)
+- [Dobby (FetchContent handles)](https://github.com/jmpews/Dobby)
+- Python 3.8 or newer (for the codegen walker, aswell as `libclang` Python package)
 
 ---
 
@@ -36,6 +35,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 | `AUGMENT_CODEGEN` | `ON` | Build the codegen tool (requires libclang + Python) |
 | `AUGMENT_TESTS` | `OFF` | Build the test suite |
 | `AUGMENT_INSTALL` | `ON` | Enable install targets |
+| `AUGMENT_USE_FETCHCONTENT` | `ON` | Use FetchContent for Augment (recommended due to Dobby) |
 
 ---
 
@@ -49,38 +49,19 @@ cmake --build build --config Release
 
 ## Codegen
 
-Augment's codegen walker uses libclang to analyze your project's C++ source and emit:
+Augment's codegen walker uses libclang and Python to analyze your project's C++ source and emit:
 - A symbol map artifact (mangled name → address offset)
 - Typed `ctx` structs for every hooked symbol
 
-### Requirements
-
-libclang must be discoverable by CMake. On most systems:
-
-**Linux / macOS**
-```bash
-# Ubuntu / Debian
-sudo apt install libclang-dev
-
-# macOS via Homebrew
-brew install llvm
-export LIBCLANG_PATH=$(brew --prefix llvm)/lib
-```
-
-**Windows**
-
-Install LLVM from the [official releases](https://github.com/llvm/llvm-project/releases) and add it to your PATH. CMake will find it via `find_package(Clang)`.
-
 ### Running the walker
 
-The walker is invoked automatically as a CMake custom command during your project's configure step when `AUGMENT_CODEGEN=ON`. It reads your compile commands and emits generated files into `build/augment_gen/`.
-
-To run it manually:
+The walker runs as a CMake custom command at build time when headers change. 
+It takes explicit header paths. To run it manually:
 
 ```bash
-python3 tools/codegen/walker.py \
-  --compile-commands build/compile_commands.json \
-  --output build/augment_gen
+python3 tools/augment_walker.py \
+    --output-dir build/augment_generated \
+    path/to/your/header.hpp
 ```
 
 Generated files should be committed if your project does not run codegen at configure time. See [Consuming Augment](#consuming-augment) for details.
@@ -137,6 +118,6 @@ ctest --test-dir build --output-on-failure
 
 | Platform | Compiler | Hook Backend | Status |
 |---|---|---|---|
-| Windows x64 | MSVC / Clang-cl | Polyhook2 | Supported |
-| Linux x64 | GCC / Clang | Polyhook2 | Supported |
-| macOS x64 / ARM64 | Apple Clang | Polyhook2 | Supported |
+| Windows x64 | MSVC / Clang-cl | Dobby | Supported |
+| Linux x64 | GCC / Clang | Dobby | Supported |
+| macOS x64 / ARM64 | Apple Clang | Dobby | Supported |
