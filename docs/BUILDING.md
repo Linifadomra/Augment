@@ -34,7 +34,6 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 | Option | Default | Description |
 |---|---|---|
 | `AUGMENT_CODEGEN` | `ON` | Build the codegen tool (requires libclang + Python) |
-| `AUGMENT_LUA` | `OFF` | Enable Lua scripting bindings |
 | `AUGMENT_TESTS` | `OFF` | Build the test suite |
 | `AUGMENT_INSTALL` | `ON` | Enable install targets |
 
