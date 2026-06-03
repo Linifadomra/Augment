@@ -14,20 +14,7 @@ option(BUILD_SHARED_LIBS        "Build Augment as a shared library" OFF)
 option(AUGMENT_USE_FETCHCONTENT "Build Augment using FetchContent"  ON)
 
 # == DEPENDENCIES ==
-if(AUGMENT_USE_FETCHCONTENT)
-    include(FetchContent)
-    FetchContent_Declare(
-        Dobby
-        GIT_REPOSITORY https://github.com/jmpews/Dobby.git
-        GIT_TAG        5dfc8546954ce3b3198132ab13fddb89ee92cdd7
-    )
-    set(DOBBY_GENERATE_SHARED OFF CACHE BOOL "" FORCE)
-    set(DOBBY_DEBUG           OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(Dobby)
-    target_include_directories(dobby INTERFACE
-        $<BUILD_INTERFACE:${dobby_SOURCE_DIR}/include>
-    )
-endif()
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/dobby.cmake)
 
 # == TARGETS ==
 add_library(augment)
