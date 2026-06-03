@@ -84,7 +84,7 @@ def test_trampoline_calls_augment_invoke(run_walker):
     cpp = trampolines_cpp(out)
     fn  = "augment_dispatch_Combat_calculateDamage"
     start = cpp.index(fn)
-    block = cpp[start: cpp.index("}", start) + 1]
+    block = cpp[start: cpp.index("\n}", start) + 2]
     assert 'augment_invoke("Combat::calculateDamage"' in block
 
 
@@ -93,7 +93,7 @@ def test_trampoline_passes_actx(run_walker):
     cpp = trampolines_cpp(out)
     fn  = "augment_dispatch_Combat_calculateDamage"
     start = cpp.index(fn)
-    block = cpp[start: cpp.index("}", start) + 1]
+    block = cpp[start: cpp.index("\n}", start) + 2]
     assert "&__actx" in block
 
 
@@ -102,22 +102,22 @@ def test_trampoline_passes_actx(run_walker):
 # ---------------------------------------------------------------------------
 
 def test_args_array_sized_correctly(run_walker):
-    """calculateDamage has 2 params so args array must be size 2."""
+    """calculateDamage has 2 params — args array must be size 2."""
     out = run_walker("simple.hpp")
     cpp = trampolines_cpp(out)
     fn  = "augment_dispatch_Combat_calculateDamage"
     start = cpp.index(fn)
-    block = cpp[start: cpp.index("}", start) + 1]
+    block = cpp[start: cpp.index("\n}", start) + 2]
     assert "void* __args[2]" in block
 
 
 def test_args_array_no_params(run_walker):
-    """countHits has 0 params; emits the null placeholder array."""
+    """countHits has 0 params — emits the null placeholder array."""
     out = run_walker("simple.hpp")
     cpp = trampolines_cpp(out)
     fn  = "augment_dispatch_Combat_countHits"
     start = cpp.index(fn)
-    block = cpp[start: cpp.index("}", start) + 1]
+    block = cpp[start: cpp.index("\n}", start) + 2]
     assert "nullptr" in block
 
 
@@ -130,7 +130,7 @@ def test_non_void_has_ret_slot(run_walker):
     cpp = trampolines_cpp(out)
     fn  = "augment_dispatch_Combat_calculateDamage"
     start = cpp.index(fn)
-    block = cpp[start: cpp.index("}", start) + 1]
+    block = cpp[start: cpp.index("\n}", start) + 2]
     assert "__ret" in block
     assert "return __ret" in block
 
@@ -140,7 +140,7 @@ def test_void_no_return_statement(run_walker):
     cpp = trampolines_cpp(out)
     fn  = "augment_dispatch_Combat_applyDamage"
     start = cpp.index(fn)
-    block = cpp[start: cpp.index("}", start) + 1]
+    block = cpp[start: cpp.index("\n}", start) + 2]
     assert "return __ret" not in block
 
 
@@ -149,7 +149,7 @@ def test_void_ret_ptr_is_nullptr(run_walker):
     cpp = trampolines_cpp(out)
     fn  = "augment_dispatch_Combat_applyDamage"
     start = cpp.index(fn)
-    block = cpp[start: cpp.index("}", start) + 1]
+    block = cpp[start: cpp.index("\n}", start) + 2]
     assert "__ret_ptr = nullptr" in block
 
 
@@ -162,7 +162,7 @@ def test_actx_constructed(run_walker):
     cpp = trampolines_cpp(out)
     fn  = "augment_dispatch_Combat_calculateDamage"
     start = cpp.index(fn)
-    block = cpp[start: cpp.index("}", start) + 1]
+    block = cpp[start: cpp.index("\n}", start) + 2]
     assert "AugmentCtx __actx" in block
 
 
@@ -171,7 +171,7 @@ def test_member_actx_self_is_self(run_walker):
     cpp = trampolines_cpp(out)
     fn  = "augment_dispatch_Combat_calculateDamage"
     start = cpp.index(fn)
-    block = cpp[start: cpp.index("}", start) + 1]
+    block = cpp[start: cpp.index("\n}", start) + 2]
     assert "(void*)__self" in block
 
 
@@ -180,5 +180,5 @@ def test_free_fn_actx_self_is_nullptr(run_walker):
     cpp = trampolines_cpp(out)
     fn  = "augment_dispatch_globalDamageScale"
     start = cpp.index(fn)
-    block = cpp[start: cpp.index("}", start) + 1]
+    block = cpp[start: cpp.index("\n}", start) + 2]
     assert "nullptr" in block

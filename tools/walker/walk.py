@@ -212,13 +212,14 @@ def emit_ctx_struct(sym: Symbol) -> str:
     if sym.is_member:
         lines.append("    void*   self;       // owning instance")
 
+    lines.append("    int     cancelled;  // set nonzero in BEFORE to skip original")
+
     for p in sym.params:
         lines.append(f"    {p.ctx_field_type():<16} {p.name};")
 
     if not sym._returns_void():
         lines.append(f"    {sym.return_type:<16} __return{{}};")
 
-    lines.append("    int     cancelled;  // set nonzero in BEFORE to skip original")
     lines.append("};")
     return "\n".join(lines)
 
