@@ -40,35 +40,39 @@ void Chain::sort() {
     dirty = false;
 }
 
-int Chain::dispatch(AugmentCtx& ctx) {
+bool Chain::run_before(AugmentCtx& ctx) {
     sort();
 
     for (auto& e : entries) {
         if (e.phase != AUGMENT_PHASE_BEFORE) continue;
         e.fn(&ctx, e.userdata);
-        if (ctx.cancelled) goto after;
+        if (ctx.cancelled) return false;
     }
 
     for (auto& e : entries) {
         if (e.phase != AUGMENT_PHASE_REPLACE) continue;
         e.fn(&ctx, e.userdata);
-        goto after;
+        return false;
     }
 
-    if (saved) {
-        using OrigFn = int(*)(void*);
-        ctx.user = saved;
-        auto orig = reinterpret_cast<OrigFn>(saved);
-        int r = orig(ctx.self);
-        ctx.ret = reinterpret_cast<void*>(static_cast<uintptr_t>(r));
-    }
+    return true;
+}
 
-after:
+void Chain::run_after(AugmentCtx& ctx) {
     for (auto& e : entries) {
         if (e.phase != AUGMENT_PHASE_AFTER) continue;
         e.fn(&ctx, e.userdata);
     }
+}
 
+int Chain::dispatch(AugmentCtx& ctx) {
+    if (run_before(ctx) && saved) {
+        using OrigFn = int(*)(void*);
+        auto orig = reinterpret_cast<OrigFn>(saved);
+        int r = orig(ctx.self);
+        ctx.ret = reinterpret_cast<void*>(static_cast<uintptr_t>(r));
+    }
+    run_after(ctx);
     return static_cast<int>(reinterpret_cast<uintptr_t>(ctx.ret));
 }
 

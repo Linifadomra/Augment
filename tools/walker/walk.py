@@ -304,7 +304,24 @@ def emit_trampoline(sym: Symbol) -> str:
     self_expr = "(void*)__self" if sym.is_member else "nullptr"
     lines.append(f"    AugmentCtx __actx = {{ {self_expr}, __args, __ret_ptr, 0, nullptr }};")
 
-    lines.append(f'    augment_invoke("{sym.qualified_name}", &__actx);')
+    # Typed call to the original through the saved pointer
+    if sym.is_member:
+        cls = sym.qualified_name.rsplit("::", 1)[0]
+        orig_params = ", ".join([f"{cls}*"] + [p.type_spelling for p in sym.params])
+        call_args   = ", ".join(["__self"] + [p.name for p in sym.params])
+    else:
+        orig_params = ", ".join(p.type_spelling for p in sym.params)
+        call_args   = ", ".join(p.name for p in sym.params)
+    orig_fp = f"{rt}(*)({orig_params})"
+
+    lines.append(f'    void* __saved = augment_before("{sym.qualified_name}", &__actx);')
+    if not sym._returns_void():
+        lines.append( "    if (__saved)")
+        lines.append(f"        __ret = reinterpret_cast<{orig_fp}>(__saved)({call_args});")
+    else:
+        lines.append( "    if (__saved)")
+        lines.append(f"        reinterpret_cast<{orig_fp}>(__saved)({call_args});")
+    lines.append(f'    augment_after("{sym.qualified_name}", &__actx);')
 
     if not sym._returns_void():
         lines.append("    return __ret;")

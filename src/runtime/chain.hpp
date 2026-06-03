@@ -47,6 +47,8 @@ struct Chain {
     void remove_augment(const std::string& augment_id);
     void sort();
 
+    bool run_before(AugmentCtx& ctx);
+    void run_after(AugmentCtx& ctx);
     int dispatch(AugmentCtx& ctx);
 
     int replace_count() const;
