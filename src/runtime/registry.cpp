@@ -189,6 +189,10 @@ const char* Registry::inspect(const char* symbol) {
 
 extern "C" {
 
+void augment_invoke(const char* symbol, AugmentCtx* ctx) {
+    augment::Registry::instance().dispatch(symbol, *ctx);
+}
+
 int augment_register(const char* symbol, AugmentPhase phase,
                      AugmentFn fn, void* userdata,
                      const AugmentRegOpts* opts) {

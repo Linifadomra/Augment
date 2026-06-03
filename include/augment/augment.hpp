@@ -43,6 +43,7 @@ typedef struct AugmentRegOpts {
 
 /* API */
 
+AUGMENT_API void augment_invoke(const char* symbol, AugmentCtx* ctx);
 AUGMENT_API int  augment_register(
     const char*           symbol,
     AugmentPhase          phase,
