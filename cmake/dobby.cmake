@@ -1,3 +1,5 @@
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/vendor/dobby)
+
 set(DOBBY_ALL_ARCH_FILES
     # ARM 32-bit
     "assembler-arm.cc"
@@ -128,5 +130,3 @@ foreach(target dobby dobby_static DobbyX macho_ctx_kit shared_cache_ctx_kit dobb
         endif()
     endif()
 endforeach()
-
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/vendor/dobby)
