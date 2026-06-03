@@ -42,12 +42,16 @@ public:
     // Returns 0 if no chain exists (caller should invoke original directly).
     bool        dispatch(const char* symbol, AugmentCtx& ctx);
 
+    void*       before(const char* symbol, AugmentCtx& ctx);
+    void        after(const char* symbol, AugmentCtx& ctx);
+
     static Registry& instance();
 
 private:
     Chain*      get_or_create_chain(const std::string& symbol); // call under unique_lock
     Chain*      get_chain(const std::string& symbol);           // call under any lock
     void*       resolve_target(const std::string& symbol);
+    bool        install_chain(const std::string& symbol, Chain& chain); // call under unique_lock
 
     std::unordered_map<std::string, Chain> m_chains;
     mutable std::shared_mutex              m_mutex;
