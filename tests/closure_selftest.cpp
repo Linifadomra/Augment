@@ -1,9 +1,9 @@
 #include "augment/augment.hpp"
+#include "augment/platform_compat.hpp"
 
 #include <cstdio>
 
-extern "C" __attribute__((noinline, visibility("default")))
-int augment_dyntest(int a, float b) {
+extern "C" AUGMENT_EXPORT int augment_dyntest(int a, float b) {
     volatile int   x = a;
     volatile float y = b;
     return x + (int)y;

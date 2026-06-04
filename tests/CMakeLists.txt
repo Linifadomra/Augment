@@ -17,16 +17,15 @@ add_executable(platform_selftest platform_selftest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/sym_resolve.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/hook_backend.cpp)
 target_link_libraries(platform_selftest PRIVATE dobby)
-target_include_directories(platform_selftest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_include_directories(platform_selftest PRIVATE 
+${CMAKE_CURRENT_SOURCE_DIR}/../src
+${CMAKE_CURRENT_SOURCE_DIR}/../include
+)
 add_test(NAME platform COMMAND platform_selftest)
 
 add_executable(mixin_selftest mixin_selftest.cpp)
 target_link_libraries(mixin_selftest PRIVATE augment dobby)
 add_test(NAME mixin COMMAND mixin_selftest)
-
-add_executable(closure_selftest closure_selftest.cpp)
-target_link_libraries(closure_selftest PRIVATE augment dobby ffi)
-add_test(NAME closure COMMAND closure_selftest)
 
 add_executable(closure_selftest closure_selftest.cpp)
 target_link_libraries(closure_selftest PRIVATE augment dobby ffi)

@@ -1,5 +1,6 @@
 // platform_selftest.cpp
 
+#include "augment/platform_compat.hpp"
 #include <cstdio>
 
 namespace augment::plat {
@@ -8,7 +9,7 @@ namespace augment::plat {
     void* sym_resolve(const char* symbol);
 }
 
-extern "C" __attribute__((noinline)) int augment_selftest_target(int x) {
+extern "C" AUGMENT_NOINLINE int augment_selftest_target(int x) {
     volatile int a = x;
     a += 7;
     a *= 3;

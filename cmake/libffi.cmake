@@ -1,3 +1,18 @@
+find_path(FFI_INCLUDE_DIR
+    NAMES ffi.h
+    PATHS
+        "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
+        "C:/vcpkg/installed/x64-windows/include"
+)
+
+find_library(FFI_LIBRARY
+    NAMES ffi libffi
+    PATHS
+        "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib"
+        "C:/vcpkg/installed/x64-windows/lib"
+)
+
+
 if(NOT TARGET ffi)
     find_package(unofficial-libffi CONFIG QUIET)
     if(TARGET unofficial::libffi::libffi)
@@ -15,3 +30,4 @@ if(NOT TARGET ffi)
             INTERFACE_INCLUDE_DIRECTORIES "${FFI_INCLUDE_DIR}")
     endif()
 endif()
+
