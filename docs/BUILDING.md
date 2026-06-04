@@ -4,7 +4,7 @@
 
 - CMake 3.17 or newer
 - A C++17-capable compiler (MSVC, Clang, GCC)
-- [Dobby (FetchContent handles)](https://github.com/jmpews/Dobby)
+- [Dobby (vendored)](https://github.com/jmpews/Dobby)
 - Python 3.8 or newer (for the codegen walker, aswell as `libclang` Python package)
 
 ---
@@ -32,10 +32,10 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 
 | Option | Default | Description |
 |---|---|---|
-| `AUGMENT_CODEGEN` | `ON` | Build the codegen tool (requires libclang + Python) |
 | `AUGMENT_TESTS` | `OFF` | Build the test suite |
-| `AUGMENT_INSTALL` | `ON` | Enable install targets |
-| `AUGMENT_USE_FETCHCONTENT` | `ON` | Use FetchContent for Augment (recommended due to Dobby) |
+| `AUGMENT_INSTALL` | `OFF` | Enable install targets |
+| `AUGMENT_BUILD_EXAMPLES` | `OFF` | Build Augment examples |
+| `BUILD_SHARED_LIBS` | `OFF` | Build Augment as a shared lib (propagates to Dobby) |
 
 ---
 
