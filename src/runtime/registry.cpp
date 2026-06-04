@@ -274,6 +274,10 @@ const char* augment_inspect(const char* symbol) {
     return augment::Registry::instance().inspect(symbol);
 }
 
+void* augment_resolve(const char* symbol) {
+    return augment::plat::sym_resolve(symbol);
+}
+
 } // extern "C"
 
 } // namespace augment

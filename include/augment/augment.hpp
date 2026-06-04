@@ -78,6 +78,7 @@ AUGMENT_API void augment_unregister(const char* augment_id);
 AUGMENT_API void augment_install_all(void);
 AUGMENT_API void augment_clear(void);
 AUGMENT_API const char* augment_inspect(const char* symbol);
+AUGMENT_API void* augment_resolve(const char* symbol);
 #ifdef __cplusplus
 }
 #endif

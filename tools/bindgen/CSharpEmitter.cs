@@ -80,6 +80,7 @@ sealed class CSharpEmitter : ILangEmitter
         EmitPhase(sb, "Before",  "At.Head");
         EmitPhase(sb, "After",   "At.Return");
         EmitPhase(sb, "Replace", "At.Overwrite");
+        EmitCall(sb, s);
         sb.AppendLine("    }");
         sb.AppendLine();
     }
@@ -88,6 +89,35 @@ sealed class CSharpEmitter : ILangEmitter
     {
         sb.AppendLine($"        public static void {method}(Action<Ctx> fn, int priority = 0, string? tag = null, string? id = null)");
         sb.AppendLine($"            => Mixin.Register(Symbol, {at}, c => fn(new Ctx(c)), priority, tag, id);");
+    }
+
+    static void EmitCall(StringBuilder sb, Sym s)
+    {
+        var pub = new List<string>();
+        var sig = new List<string>();
+        var args = new List<string>();
+        if (s.IsMember) { pub.Add("nint self"); sig.Add("void*"); args.Add("(void*)self"); }
+        foreach (var p in s.Params)
+        {
+            var nm = Esc(p.Name);
+            if (p.Opaque) { pub.Add($"nint {nm}"); sig.Add("void*"); args.Add($"(void*){nm}"); }
+            else { var ct = CsType(p.Type, false); pub.Add($"{ct} {nm}"); sig.Add(ct); args.Add(nm); }
+        }
+        string pubRet, prefix;
+        if (s.ReturnsVoid) { pubRet = "void"; sig.Add("void"); prefix = ""; }
+        else
+        {
+            var rt = CsType(s.ReturnType, false);
+            if (rt == "nint") { pubRet = "nint"; sig.Add("void*"); prefix = "return (nint)"; }
+            else { pubRet = rt; sig.Add(rt); prefix = "return "; }
+        }
+        sb.AppendLine();
+        sb.AppendLine("        static nint _call;");
+        sb.AppendLine($"        public static {pubRet} Call({string.Join(", ", pub)})");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (_call == 0) _call = Mixin.Resolve(Symbol);");
+        sb.AppendLine($"            {prefix}((delegate* unmanaged<{string.Join(", ", sig)}>)_call)({string.Join(", ", args)});");
+        sb.AppendLine("        }");
     }
 
     static string CsType(string cpp, bool opaque)

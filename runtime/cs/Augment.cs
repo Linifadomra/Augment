@@ -52,6 +52,11 @@ public static unsafe class Mixin
         [MarshalAs(UnmanagedType.LPUTF8Str)] string symbol,
         int phase, nint fn, nint userdata, nint opts);
 
+    [DllImport("augment", EntryPoint = "augment_resolve")]
+    static extern nint augment_resolve([MarshalAs(UnmanagedType.LPUTF8Str)] string symbol);
+
+    public static nint Resolve(string symbol) => augment_resolve(symbol);
+
     public static void Register(string symbol, At at, CtxAction body,
                                 int priority = 0, string? tag = null, string? id = null)
     {
