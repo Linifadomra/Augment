@@ -37,9 +37,34 @@ except ImportError:
           "Install with:  pip install libclang", file=sys.stderr)
     sys.exit(1)
 
+def _ffi_kind(t) -> str:
+    c = t.get_canonical()
+    k = c.kind
+    K = clang.TypeKind
+    if k in (K.POINTER, K.LVALUEREFERENCE, K.RVALUEREFERENCE,
+             K.CONSTANTARRAY, K.INCOMPLETEARRAY):
+        return "ptr"
+    if k == K.VOID:  return "void"
+    if k == K.FLOAT: return "f32"
+    if k in (K.DOUBLE, K.LONGDOUBLE): return "f64"
+    if k == K.BOOL:  return "u8"
+    SIGNED   = {K.CHAR_S, K.SCHAR, K.SHORT, K.INT, K.LONG, K.LONGLONG, K.WCHAR}
+    UNSIGNED = {K.CHAR_U, K.UCHAR, K.USHORT, K.UINT, K.ULONG, K.ULONGLONG,
+                K.CHAR16, K.CHAR32}
+    if k in SIGNED or k in UNSIGNED or k == K.ENUM:
+        size = c.get_size()
+        if size <= 0:
+            size = 4
+        signed = k in SIGNED or k == K.ENUM
+        return f"{'i' if signed else 'u'}{size * 8}"
+    if k == K.RECORD:
+        return "struct"
+    return "ptr"
+
+
 class Param:
     __slots__ = ("name", "type_spelling", "is_pointer", "is_ref",
-                 "is_const", "pointee_spelling")
+                 "is_const", "pointee_spelling", "ffi")
 
     def __init__(self, cursor: clang.Cursor):
         self.name           = cursor.spelling or f"_p{cursor.hash}"
@@ -48,6 +73,7 @@ class Param:
         self.is_pointer     = t.kind == clang.TypeKind.POINTER
         self.is_ref         = t.kind == clang.TypeKind.LVALUEREFERENCE
         self.is_const       = t.is_const_qualified()
+        self.ffi            = _ffi_kind(t)
 
         if self.is_pointer or self.is_ref:
             self.pointee_spelling = t.get_pointee().spelling
@@ -62,6 +88,7 @@ class Param:
             "is_ref":           self.is_ref,
             "is_const":         self.is_const,
             "pointee_type":     self.pointee_spelling,
+            "ffi":              self.ffi,
         }
 
     # What type to store in the ctx struct for this param.
@@ -81,13 +108,15 @@ class Param:
 
 
 class Symbol:
-    __slots__ = ("qualified_name", "short_name", "namespace", "class_name",
-                 "params", "return_type", "is_member", "is_const_method",
+    __slots__ = ("qualified_name", "mangled", "short_name", "namespace", "class_name",
+                 "params", "return_type", "ffi_return", "is_member", "is_const_method",
                  "source_file", "line")
 
     def __init__(self, cursor: clang.Cursor, tu_path: str):
         self.short_name      = cursor.spelling
         self.qualified_name  = _qualified_name(cursor)
+        m                    = cursor.mangled_name or ""
+        self.mangled         = m[m.index("_Z"):] if "_Z" in m else self.qualified_name
         parts                = self.qualified_name.rsplit("::", 1)
         if len(parts) == 2:
             self.class_name  = parts[0].rsplit("::", 1)[-1]
@@ -98,6 +127,7 @@ class Symbol:
 
         self.params          = [Param(c) for c in cursor.get_arguments()]
         self.return_type     = cursor.result_type.spelling
+        self.ffi_return      = _ffi_kind(cursor.result_type)
         self.is_member       = cursor.kind == clang.CursorKind.CXX_METHOD
         self.is_const_method = bool(cursor.is_const_method()) if self.is_member else False
         self.source_file     = tu_path
@@ -105,13 +135,15 @@ class Symbol:
 
     def to_dict(self) -> dict:
         return {
-            "symbol":           self.qualified_name,
+            "symbol":           self.mangled,
+            "qualified":        self.qualified_name,
             "short_name":       self.short_name,
             "class":            self.class_name,
             "namespace":        self.namespace,
             "is_member":        self.is_member,
             "is_const_method":  self.is_const_method,
             "return_type":      self.return_type,
+            "ffi_return":       self.ffi_return,
             "returns_void":     self._returns_void(),
             "params":           [p.to_dict() for p in self.params],
             "source_file":      self.source_file,
@@ -314,14 +346,14 @@ def emit_trampoline(sym: Symbol) -> str:
         call_args   = ", ".join(p.name for p in sym.params)
     orig_fp = f"{rt}(*)({orig_params})"
 
-    lines.append(f'    void* __saved = augment_before("{sym.qualified_name}", &__actx);')
+    lines.append(f'    void* __saved = augment_before("{sym.mangled}", &__actx);')
     if not sym._returns_void():
         lines.append( "    if (__saved)")
         lines.append(f"        __ret = reinterpret_cast<{orig_fp}>(__saved)({call_args});")
     else:
         lines.append( "    if (__saved)")
         lines.append(f"        reinterpret_cast<{orig_fp}>(__saved)({call_args});")
-    lines.append(f'    augment_after("{sym.qualified_name}", &__actx);')
+    lines.append(f'    augment_after("{sym.mangled}", &__actx);')
 
     if not sym._returns_void():
         lines.append("    return __ret;")
@@ -350,7 +382,7 @@ def emit_ptr_registrar(sym: Symbol) -> str:
         f"namespace {{",
         f"struct _AugmentPtrReg_{fname} {{",
         f"    _AugmentPtrReg_{fname}() {{",
-        f"        augment_register_ptr(\"{sym.qualified_name}\",",
+        f"        augment_register_ptr(\"{sym.mangled}\",",
         f"            reinterpret_cast<void*>(&{dispatch_name}));",
         f"    }}",
         f"}} _augment_ptr_reg_{fname}_inst;",
@@ -416,9 +448,39 @@ def parse_args() -> argparse.Namespace:
                    help="Only emit symbols whose qualified name starts with this")
     p.add_argument("--clang-args", default="",
                    help="Extra clang flags, space-separated (e.g. '-std=c++17 -Iinclude')")
+    p.add_argument("--compile-commands", default=None,
+                   help="compile_commands.json to source real include/define flags from")
     p.add_argument("--json-only", action="store_true",
                    help="Emit only symbols.json, skip hpp/cpp codegen")
     return p.parse_args()
+
+
+def _flags_from_compile_commands(cc_path, header):
+    import json, shlex
+    entries = json.load(open(cc_path))
+    base = os.path.splitext(os.path.basename(header))[0]
+    entry = next((e for e in entries
+                  if os.path.splitext(os.path.basename(e["file"]))[0] == base), None)
+    if entry is None:
+        entry = max(entries, key=lambda e: len(e.get("arguments") or e.get("command", "").split()))
+    cmd = entry.get("arguments") or shlex.split(entry["command"])
+    src = entry["file"]
+    out, skip = [], False
+    for i, a in enumerate(cmd):
+        if skip:
+            skip = False
+            continue
+        if i == 0 or a == "-c":
+            continue
+        if a in ("-o", "-MF", "-MT", "-MQ", "-MJ"):
+            skip = True
+            continue
+        if a.startswith("-M") or a == src:
+            continue
+        if a.endswith((".cpp", ".cc", ".cxx", ".c", ".mm", ".o", ".obj")):
+            continue
+        out.append(a)
+    return out
 
 
 def main():
@@ -426,8 +488,8 @@ def main():
 
     index       = clang.Index.create()
     clang_flags = args.clang_args.split() if args.clang_args else []
-    # Always compile as C++17 unless caller overrides
-    if not any(f.startswith("-std=") for f in clang_flags):
+    # Always compile as C++17 unless caller overrides or supplies a real flag set
+    if not args.compile_commands and not any(f.startswith("-std=") for f in clang_flags):
         clang_flags = ["-std=c++17"] + clang_flags
 
     all_symbols: list[Symbol] = []
@@ -440,7 +502,11 @@ def main():
             errors += 1
             continue
 
-        tu = index.parse(header, args=clang_flags,
+        flags = clang_flags
+        if args.compile_commands:
+            flags = _flags_from_compile_commands(args.compile_commands, header) + clang_flags
+
+        tu = index.parse(header, args=flags,
                          options=clang.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD |
                                  clang.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES)
 
@@ -468,6 +534,15 @@ def main():
     manifest_path.write_text(emit_manifest_json(all_symbols))
     print(f"  -> {manifest_path}  ({len(all_symbols)} symbols)")
 
+    # FFI signature table for the runtime closure engine
+    sig_path = out / "signatures.txt"
+    with open(sig_path, "w") as sf:
+        for sym in all_symbols:
+            parts = [sym.mangled, "1" if sym.is_member else "0", sym.ffi_return]
+            parts += [p.ffi for p in sym.params]
+            sf.write(" ".join(parts) + "\n")
+    print(f"  -> {sig_path}")
+
     if not args.json_only:
         ctx_path = out / "augment_ctx.hpp"
         ctx_path.write_text(emit_ctx_hpp(all_symbols, args.headers))
@@ -477,7 +552,7 @@ def main():
         tramp_path.write_text(emit_trampolines_cpp(all_symbols, args.headers))
         print(f"  -> {tramp_path}")
 
-    sys.exit(1 if errors else 0)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ target_sources(augment PRIVATE
     src/runtime/registry.cpp
     src/runtime/chain.cpp
     src/runtime/conflict.cpp
+    src/runtime/closure.cpp
     src/platform/hook_backend.cpp
     src/platform/sym_resolve.cpp
 )
@@ -47,6 +48,8 @@ target_include_directories(augment
 target_link_libraries(augment
     PRIVATE
         dobby
+    PUBLIC
+        ffi
 )
 
 # == Codegen Helper Function ==
