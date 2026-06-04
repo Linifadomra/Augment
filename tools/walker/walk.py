@@ -68,9 +68,10 @@ class Param:
     # References become raw pointers; everything else is value.
     def ctx_field_type(self) -> str:
         if self.is_ref:
-            # strip const from stored pointer
             base = self.pointee_spelling.replace("const ", "").strip()
-            return f"{base}*"
+            return base
+        if self.is_pointer:
+            return self.type_spelling
         return self.type_spelling
 
     # How to initialise the ctx field from a call-site argument.
@@ -216,42 +217,38 @@ def emit_ctx_struct(sym: Symbol) -> str:
     lines.append("    int     cancelled;  // set nonzero in BEFORE to skip original")
 
     for p in sym.params:
-        lines.append(f"    {p.ctx_field_type():<16} {p.name};")
+        if p.is_const:
+            lines.append(f"    const {p.ctx_field_type()}&{'':<8} {p.name};")
+        else:
+            lines.append(f"    {p.ctx_field_type()}&{'':<9} {p.name};")
 
     if not sym._returns_void():
-        lines.append(f"    {sym.return_type:<16} __return{{}};")
+        lines.append(f"    {sym.return_type}&{'':<9} __return;") 
 
     lines.append("};")
     return "\n".join(lines)
 
 
 def emit_ctx_pack_fn(sym: Symbol) -> str:
-    """
-    Emit a helper:
-        augment_ctx_pack_{name}(AugmentCtx* actx, ctx_T* out)
-    that unpacks the void** args array into the typed ctx struct.
-    This is what generated trampoline dispatchers call.
-    """
     sname = sym.ctx_struct_name()
-    fn    = f"augment_ctx_pack_{sym.qualified_name.replace('::', '_')}"
-    lines = [f"inline void {fn}(const AugmentCtx* actx, {sname}* out) {{"]
+    fn = f"augment_ctx_pack_{sym.qualified_name.replace('::', '_')}"
+    lines = [f"inline {sname} {fn}(AugmentCtx* actx) {{"]
+    lines.append(f"    return {{")
+
+    if sym.is_member:
+        lines.append(f"        actx->self,")
+    lines.append(f"        actx->cancelled,")
 
     i = 0
-    if sym.is_member:
-        lines.append(f"    out->self      = actx->self;")
     for p in sym.params:
         ct = p.ctx_field_type()
-        if p.is_ref:
-            # stored as pointer in ctx; arg slot holds T*
-            lines.append(f"    out->{p.name:<12} = *static_cast<{ct}*>(actx->args[{i}]);")
-        else:
-            lines.append(f"    out->{p.name:<12} = *static_cast<{ct}*>(actx->args[{i}]);")
+        lines.append(f"        *static_cast<{ct}*>(actx->args[{i}]),")
         i += 1
 
     if not sym._returns_void():
-        lines.append(f"    out->__return  = *static_cast<{sym.return_type}*>(actx->ret);")
+        lines.append(f"        *static_cast<{sym.return_type}*>(actx->ret),")
 
-    lines.append("    out->cancelled = actx->cancelled;")
+    lines.append(f"    }};")
     lines.append("}")
     return "\n".join(lines)
 
