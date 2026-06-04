@@ -60,7 +60,7 @@ function(augment_codegen_target)
     cmake_parse_arguments(
         ACG                         # prefix
         "JSON_ONLY"                 # options (flags)
-        "TARGET;OUTPUT_DIR;SYMBOL_PREFIX;COMPILE_COMMANDS"   # one-value keywords
+        "TARGET;OUTPUT_DIR;SYMBOL_PREFIX"   # one-value keywords
         "HEADERS;CLANG_ARGS"        # multi-value keywords
         ${ARGN}
     )
@@ -92,13 +92,10 @@ function(augment_codegen_target)
         list(APPEND _walker_cmd "--symbol-prefix" "${ACG_SYMBOL_PREFIX}")
     endif()
 
-    if(ACG_COMPILE_COMMANDS)
-        list(APPEND _walker_cmd "--compile-commands=${ACG_COMPILE_COMMANDS}")
-    endif()
-
     if(ACG_CLANG_ARGS)
+        # Join into a single quoted string as the script splits on spaces
         list(JOIN ACG_CLANG_ARGS " " _clang_args_joined)
-        list(APPEND _walker_cmd "--clang-args=${_clang_args_joined}")
+        list(APPEND _walker_cmd "--clang-args" "${_clang_args_joined}")
     endif()
 
     if(ACG_JSON_ONLY)
@@ -112,21 +109,20 @@ function(augment_codegen_target)
 
     # -- Declare outputs --
     set(_out_manifest   "${ACG_OUTPUT_DIR}/symbols.json")
-    set(_out_signatures "${ACG_OUTPUT_DIR}/signatures.txt")
     set(_out_ctx        "${ACG_OUTPUT_DIR}/augment_ctx.hpp")
     set(_out_trampoline "${ACG_OUTPUT_DIR}/augment_trampolines.cpp")
 
     if(ACG_JSON_ONLY)
-        set(_outputs "${_out_manifest}" "${_out_signatures}")
+        set(_outputs "${_out_manifest}")
     else()
-        set(_outputs "${_out_manifest}" "${_out_signatures}" "${_out_ctx}" "${_out_trampoline}")
+        set(_outputs "${_out_manifest}" "${_out_ctx}" "${_out_trampoline}")
     endif()
 
     # -- Custom command that actually runs the walker --
     add_custom_command(
         OUTPUT          ${_outputs}
         COMMAND         ${_walker_cmd}
-        DEPENDS         ${ACG_HEADERS} "${AUGMENT_WALKER_SCRIPT}" ${ACG_COMPILE_COMMANDS}
+        DEPENDS         ${ACG_HEADERS} "${AUGMENT_WALKER_SCRIPT}"
         COMMENT         "[Augment] Running codegen for ${ACG_TARGET}..."
         VERBATIM
     )
@@ -156,7 +152,6 @@ function(augment_codegen_target)
     set_target_properties(${ACG_TARGET} PROPERTIES
         AUGMENT_GENERATED_DIR       "${ACG_OUTPUT_DIR}"
         AUGMENT_MANIFEST_JSON       "${_out_manifest}"
-        AUGMENT_SIGNATURES          "${_out_signatures}"
     )
 
     message(STATUS

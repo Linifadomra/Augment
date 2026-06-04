@@ -73,6 +73,11 @@ def main():
                           capture_output=True, text=True).stdout
     funcs = parse(text)
 
+    if not funcs:
+        print(f"dwarf_manifest: no DWARF in {dsym}; build with debug info (-g) "
+              f"so the signature manifest can be generated", file=sys.stderr)
+        sys.exit(1)
+
     mangled = list(funcs.keys())
     dem = subprocess.run(["c++filt", "-n"], input="\n".join(mangled),
                          capture_output=True, text=True).stdout.splitlines()
