@@ -550,7 +550,7 @@ def main():
         tramp_path.write_text(emit_trampolines_cpp(all_symbols, args.headers))
         print(f"  -> {tramp_path}")
 
-    sys.exit(0)
+    sys.exit(1 if errors else 0)
 
 
 if __name__ == "__main__":

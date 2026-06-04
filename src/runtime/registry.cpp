@@ -104,10 +104,10 @@ void* Registry::resolve_target(const std::string& symbol) {
 }
 
 bool Registry::install_chain(const std::string& symbol, Chain& chain) {
-    void* repl = augment_make_closure(symbol.c_str());
+    void* repl = chain.target_ptr ? chain.target_ptr : augment_make_closure(symbol.c_str());
     if (!repl) {
         std::fprintf(stderr,
-            "[augment] no signature for '%s' (not in manifest?)\n", symbol.c_str());
+            "[augment] no trampoline or signature for '%s' (not in manifest?)\n", symbol.c_str());
         return false;
     }
 
