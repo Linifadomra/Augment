@@ -104,9 +104,10 @@ void* Registry::resolve_target(const std::string& symbol) {
 }
 
 bool Registry::install_chain(const std::string& symbol, Chain& chain) {
-    if (!chain.target_ptr) {
+    void* repl = augment_make_closure(symbol.c_str());
+    if (!repl) {
         std::fprintf(stderr,
-            "[augment] no dispatch trampoline registered for '%s'\n", symbol.c_str());
+            "[augment] no signature for '%s' (not in manifest?)\n", symbol.c_str());
         return false;
     }
 
@@ -118,7 +119,7 @@ bool Registry::install_chain(const std::string& symbol, Chain& chain) {
     }
 
     void* orig = nullptr;
-    if (!plat::hook_install(target, chain.target_ptr, &orig)) {
+    if (!plat::hook_install(target, repl, &orig)) {
         std::fprintf(stderr,
             "[augment] hook_install failed for '%s'\n", symbol.c_str());
         return false;
@@ -272,6 +273,10 @@ void augment_clear(void) {
 
 const char* augment_inspect(const char* symbol) {
     return augment::Registry::instance().inspect(symbol);
+}
+
+void* augment_resolve(const char* symbol) {
+    return augment::plat::sym_resolve(symbol);
 }
 
 } // extern "C"

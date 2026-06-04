@@ -5,7 +5,6 @@ add_executable(game_example
 target_link_libraries(game_example PRIVATE augment::augment)
 target_include_directories(game_example PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

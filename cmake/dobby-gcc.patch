@@ -1,0 +1,100 @@
+diff --git a/builtin-plugin/SymbolResolver/elf/dobby_symbol_resolver.cc b/builtin-plugin/SymbolResolver/elf/dobby_symbol_resolver.cc
+index 2378433..51b120c 100644
+--- a/builtin-plugin/SymbolResolver/elf/dobby_symbol_resolver.cc
++++ b/builtin-plugin/SymbolResolver/elf/dobby_symbol_resolver.cc
+@@ -170,7 +170,7 @@ void *resolve_elf_internal_symbol(const char *library_name, const char *symbol_n
+   if (library_name) {
+     RuntimeModule module = ProcessRuntime::getModule(library_name);
+ 
+-    if (module.load_address) {
++    if (module.base) {
+       auto mmapFileMng = MmapFileManager(module.path);
+       auto file_mem = mmapFileMng.map();
+ 
+@@ -182,7 +182,7 @@ void *resolve_elf_internal_symbol(const char *library_name, const char *symbol_n
+       }
+ 
+       if (result)
+-        result = (void *)((addr_t)result + (addr_t)module.load_address - ((addr_t)file_mem - (addr_t)ctx.load_bias));
++        result = (void *)((addr_t)result + (addr_t)module.base - ((addr_t)file_mem - (addr_t)ctx.load_bias));
+     }
+   }
+ 
+@@ -190,7 +190,7 @@ void *resolve_elf_internal_symbol(const char *library_name, const char *symbol_n
+     auto ProcessModuleMap = ProcessRuntime::getModuleMap();
+     for (auto module : ProcessModuleMap) {
+ 
+-      if (module.load_address) {
++      if (module.base) {
+         auto mmapFileMng = MmapFileManager(module.path);
+         auto file_mem = mmapFileMng.map();
+ 
+@@ -202,7 +202,7 @@ void *resolve_elf_internal_symbol(const char *library_name, const char *symbol_n
+         }
+ 
+         if (result)
+-          result = (void *)((addr_t)result + (addr_t)module.load_address - ((addr_t)file_mem - (addr_t)ctx.load_bias));
++          result = (void *)((addr_t)result + (addr_t)module.base - ((addr_t)file_mem - (addr_t)ctx.load_bias));
+       }
+ 
+       if (result)
+diff --git a/external/logging/logging.cc b/external/logging/logging.cc
+index 86ead3d..85b19b6 100644
+--- a/external/logging/logging.cc
++++ b/external/logging/logging.cc
+@@ -6,6 +6,7 @@
+ #include <string.h>
+ #include <stdbool.h>
+ #include <time.h>
++#include <sys/time.h>
+ 
+ #if defined(__linux__) || defined(__APPLE__)
+ #include <unistd.h>
+diff --git a/source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc b/source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc
+index bfe7361..2870197 100644
+--- a/source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc
++++ b/source/Backend/UserMode/ExecMemory/code-patch-tool-posix.cc
+@@ -1,6 +1,6 @@
+ 
+ #include "dobby/dobby_internal.h"
+-#include "core/arch/Cpu.h"
++#include "PlatformUnifiedInterface/ExecMemory/ClearCacheTool.h"
+ 
+ #include <unistd.h>
+ #include <sys/mman.h>
+diff --git a/source/Backend/UserMode/PlatformUtil/Linux/ProcessRuntime.cc b/source/Backend/UserMode/PlatformUtil/Linux/ProcessRuntime.cc
+index 776d25e..1918865 100644
+--- a/source/Backend/UserMode/PlatformUtil/Linux/ProcessRuntime.cc
++++ b/source/Backend/UserMode/PlatformUtil/Linux/ProcessRuntime.cc
+@@ -14,7 +14,7 @@
+ #define LINE_MAX 2048
+ 
+ static bool memory_region_comparator(MemRange a, MemRange b) {
+-  return (a.start < b.start);
++  return (a.start() < b.start());
+ }
+ 
+ stl::vector<MemRegion> regions;
+@@ -163,7 +163,7 @@ static stl::vector<RuntimeModule> &get_process_map_with_proc_maps() {
+       path_buffer[strlen(path_buffer) - 1] = 0;
+     }
+     strncpy(module.path, path_buffer, sizeof(module.path) - 1);
+-    module.load_address = (void *)region_start;
++    module.base = (void *)region_start;
+     modules->push_back(module);
+ 
+ #if 0
+@@ -191,11 +191,11 @@ static stl::vector<RuntimeModule> get_process_map_with_linker_iterator() {
+         if (info->dlpi_name && info->dlpi_name[0] == '/')
+           strcpy(module.path, info->dlpi_name);
+ 
+-        module.load_address = (void *)info->dlpi_addr;
++        module.base = (void *)info->dlpi_addr;
+         for (size_t i = 0; i < info->dlpi_phnum; ++i) {
+           if (info->dlpi_phdr[i].p_type == PT_LOAD) {
+             uintptr_t load_bias = (info->dlpi_phdr[i].p_vaddr - info->dlpi_phdr[i].p_offset);
+-            module.load_address = (void *)((addr_t)module.load_address + load_bias);
++            module.base = (void *)((addr_t)module.base + load_bias);
+             break;
+           }
+         }

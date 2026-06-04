@@ -1,5 +1,4 @@
 #include "augment/augment.hpp"
-#include "augment_generated/augment_ctx.hpp"
 #include "vanilla/game.hpp"
 #include <stdio.h>
 
@@ -12,8 +11,8 @@
 Combat gCombat;
 
 static void damage_boost_hook(AugmentCtx* ctx, void* /*userdata*/) {
-    auto c = augment_ctx_pack_Combat_calculateDamage(ctx);
-    c.base *= 1.5f;
+    float* base = static_cast<float*>(ctx->args[0]);
+    *base *= 1.5f;
 }
 
 // -- Register patch --
