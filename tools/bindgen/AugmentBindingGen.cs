@@ -36,7 +36,7 @@ interface ILangEmitter
 {
     string Lang { get; }
     string FileName { get; }
-    string Generate(IReadOnlyList<Sym> symbols);
+    string Generate(IReadOnlyList<Sym> symbols, string ns);
 }
 
 static class Program
@@ -49,14 +49,15 @@ static class Program
 
     static int Main(string[] args)
     {
-        string? input = null, output = null, lang = "cs";
+        string? input = null, output = null, lang = "cs", ns = "Game";
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
             {
-                case "--in":   input  = args[++i]; break;
-                case "--out":  output = args[++i]; break;
-                case "--lang": lang   = args[++i]; break;
+                case "--in":        input  = args[++i]; break;
+                case "--out":       output = args[++i]; break;
+                case "--lang":      lang   = args[++i]; break;
+                case "--namespace": ns     = args[++i]; break;
                 default:
                     Console.Error.WriteLine($"unknown arg: {args[i]}");
                     return 2;
@@ -77,7 +78,7 @@ static class Program
 
         var manifest = JsonSerializer.Deserialize<Manifest>(File.ReadAllText(input))
                        ?? new Manifest();
-        var src = emitter.Generate(manifest.Symbols);
+        var src = emitter.Generate(manifest.Symbols, ns);
 
         if (output is null)
         {

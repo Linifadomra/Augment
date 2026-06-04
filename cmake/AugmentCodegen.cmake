@@ -93,9 +93,8 @@ function(augment_codegen_target)
     endif()
 
     if(ACG_CLANG_ARGS)
-        # Join into a single quoted string as the script splits on spaces
         list(JOIN ACG_CLANG_ARGS " " _clang_args_joined)
-        list(APPEND _walker_cmd "--clang-args" "${_clang_args_joined}")
+        list(APPEND _walker_cmd "--clang-args=${_clang_args_joined}")
     endif()
 
     if(ACG_JSON_ONLY)
