@@ -1,6 +1,6 @@
 #include "augment/augment.hpp"
 
-#include <ffi/ffi.h>
+#include <ffi.h>
 
 #include <cstdio>
 #include <fstream>
