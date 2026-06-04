@@ -54,6 +54,7 @@ target_link_libraries(augment
 
 # == Codegen Helper Function ==
 include(cmake/AugmentCodegen.cmake)
+include(cmake/AugmentManifest.cmake)
 
 # == Examples ==
 if(AUGMENT_BUILD_EXAMPLES)
