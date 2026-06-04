@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -71,4 +72,36 @@ public static unsafe class Mixin
         if (tagP != nint.Zero) Marshal.FreeCoTaskMem(tagP);
         if (idP  != nint.Zero) Marshal.FreeCoTaskMem(idP);
     }
+
+    public static void Hook(string name, At at, Action<Ctx> fn,
+                            int priority = 0, string? tag = null, string? id = null)
+        => Register(name, at, c => fn(new Ctx(c)), priority, tag, id);
+
+    [DllImport("augment", EntryPoint = "augment_call")]
+    static extern void augment_call([MarshalAs(UnmanagedType.LPUTF8Str)] string symbol, nint args, uint nargs);
+
+    public static void Call(string name, params object[] args)
+    {
+        int n = args.Length;
+        var pins = new GCHandle[n];
+        nint* ptrs = stackalloc nint[n > 0 ? n : 1];
+        for (int i = 0; i < n; i++)
+        {
+            pins[i] = GCHandle.Alloc(args[i], GCHandleType.Pinned);
+            ptrs[i] = pins[i].AddrOfPinnedObject();
+        }
+        augment_call(name, (nint)ptrs, (uint)n);
+        for (int i = 0; i < n; i++) pins[i].Free();
+    }
+}
+
+public unsafe struct Ctx
+{
+    private readonly AugmentCtx* _c;
+    public Ctx(AugmentCtx* c) { _c = c; }
+    public nint Self => (nint)_c->Self;
+    public bool Cancelled { get => _c->Cancelled != 0; set => _c->Cancelled = value ? 1 : 0; }
+    public T    Arg<T>(int i) where T : unmanaged => *(T*)_c->Args[i];
+    public void SetArg<T>(int i, T v) where T : unmanaged => *(T*)_c->Args[i] = v;
+    public nint ArgPtr(int i) => (nint)_c->Args[i];
 }

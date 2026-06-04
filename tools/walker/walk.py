@@ -538,7 +538,7 @@ def main():
     sig_path = out / "signatures.txt"
     with open(sig_path, "w") as sf:
         for sym in all_symbols:
-            parts = [sym.mangled, "1" if sym.is_member else "0", sym.ffi_return]
+            parts = [sym.mangled, sym.qualified_name, "1" if sym.is_member else "0", sym.ffi_return]
             parts += [p.ffi for p in sym.params]
             sf.write(" ".join(parts) + "\n")
     print(f"  -> {sig_path}")

@@ -105,13 +105,16 @@ extern "C" AUGMENT_API int augment_load_signatures(const char* path) {
         if (line.empty() || line[0] == '#')
             continue;
         std::istringstream ss(line);
-        std::string sym, member, rtype, a;
-        if (!(ss >> sym >> member >> rtype))
+        std::string sym, qualified, member, rtype, a;
+        if (!(ss >> sym >> qualified >> member >> rtype))
             continue;
         std::vector<std::string> atypes;
         while (ss >> a)
             atypes.push_back(a);
-        register_sig(sym, member == "1", rtype, atypes);
+        bool mem = member == "1";
+        register_sig(sym, mem, rtype, atypes);
+        if (qualified != sym)
+            register_sig(qualified, mem, rtype, atypes);
         ++n;
     }
     return n;
@@ -148,4 +151,24 @@ extern "C" AUGMENT_API void* augment_make_closure(const char* symbol) {
 
     ct[symbol] = c;
     return c->code;
+}
+
+extern "C" AUGMENT_API void augment_call(const char* symbol, void** args, unsigned nargs) {
+    (void)nargs;
+    void* fn = augment::plat::sym_resolve(symbol);
+    if (!fn)
+        return;
+    auto it = sig_table().find(symbol);
+    if (it == sig_table().end())
+        return;
+    Signature& sig = it->second;
+
+    ffi_cif cif;
+    if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, static_cast<unsigned>(sig.atypes.size()),
+                     sig.rtype, sig.atypes.data()) != FFI_OK)
+        return;
+
+    char retbuf[64];
+    void* ret = (sig.rtype == &ffi_type_void) ? nullptr : static_cast<void*>(retbuf);
+    ffi_call(&cif, reinterpret_cast<void (*)()>(fn), ret, args);
 }
