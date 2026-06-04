@@ -78,6 +78,13 @@ AUGMENT_API void augment_unregister(const char* augment_id);
 AUGMENT_API void augment_install_all(void);
 AUGMENT_API void augment_clear(void);
 AUGMENT_API const char* augment_inspect(const char* symbol);
+AUGMENT_API void* augment_resolve(const char* symbol);
+AUGMENT_API void  augment_register_signature(const char* symbol, int is_member,
+                                             const char* rtype, const char** atypes,
+                                             unsigned nargs);
+AUGMENT_API int   augment_load_signatures(const char* path);
+AUGMENT_API void* augment_make_closure(const char* symbol);
+AUGMENT_API void  augment_call(const char* symbol, void** args, unsigned nargs);
 #ifdef __cplusplus
 }
 #endif
