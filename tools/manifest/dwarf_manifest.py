@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 import subprocess, sys, re, shutil
 
-DWARFDUMP = shutil.which("llvm-dwarfdump") or shutil.which("dwarfdump") or "dwarfdump"
+DWARFDUMP = shutil.which("llvm-dwarfdump") or shutil.which("dwarfdump")
+CXXFILT = shutil.which("llvm-cxxfilt") or shutil.which("c++filt")
+if not DWARFDUMP:
+    print("dwarf_manifest: requires llvm-dwarfdump (install LLVM)", file=sys.stderr)
+    sys.exit(1)
+if not CXXFILT:
+    print("dwarf_manifest: requires llvm-cxxfilt or c++filt (install LLVM)", file=sys.stderr)
+    sys.exit(1)
 
 PRIM = {
     "void": "void", "bool": "u8", "char": "i8", "signed char": "i8",
@@ -72,7 +79,7 @@ def parse(text):
 def main():
     dsym, outpath = sys.argv[1], sys.argv[2]
     text = subprocess.run([DWARFDUMP, "--debug-info", dsym],
-                          capture_output=True, text=True).stdout
+                          capture_output=True, text=True, encoding="utf-8").stdout
     funcs = parse(text)
 
     if not funcs:
@@ -81,8 +88,8 @@ def main():
         sys.exit(1)
 
     mangled = list(funcs.keys())
-    dem = subprocess.run(["c++filt", "-n"], input="\n".join(mangled),
-                         capture_output=True, text=True).stdout.splitlines()
+    dem = subprocess.run([CXXFILT, "-n"], input="\n".join(mangled),
+                         capture_output=True, text=True, encoding="utf-8").stdout.splitlines()
     qmap = dict(zip(mangled, dem))
 
     n = 0
