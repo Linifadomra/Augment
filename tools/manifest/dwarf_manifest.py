@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import subprocess, sys, re
+import subprocess, sys, re, shutil
+
+DWARFDUMP = shutil.which("llvm-dwarfdump") or shutil.which("dwarfdump") or "dwarfdump"
 
 PRIM = {
     "void": "void", "bool": "u8", "char": "i8", "signed char": "i8",
@@ -69,7 +71,7 @@ def parse(text):
 
 def main():
     dsym, outpath = sys.argv[1], sys.argv[2]
-    text = subprocess.run(["dwarfdump", "--debug-info", dsym],
+    text = subprocess.run([DWARFDUMP, "--debug-info", dsym],
                           capture_output=True, text=True).stdout
     funcs = parse(text)
 

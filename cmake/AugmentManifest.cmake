@@ -1,19 +1,3 @@
-# cmake/AugmentManifest.cmake
-# ---------------------------------------------------------------------------
-# augment_manifest(
-#     TARGET  <name>     # CMake target to attach to (required)
-#     OUTPUT  <path>     # Where to write the signature manifest (required)
-# )
-#
-# Derives a per-function signature manifest (return type, member-ness, FFI arg
-# kinds) from TARGET's DWARF for the libffi closure engine, and adds the
-# debug-info flag the toolchain needs so it can be generated:
-#
-#   APPLE   -g            dsymutil -> dwarf_manifest.py(<bin>.dSYM)
-#   Linux   -gsplit-dwarf dwarf_manifest.py(<bin>)
-#   MSVC    /Zi           PDB-based generator not implemented yet
-# ---------------------------------------------------------------------------
-
 if(NOT DEFINED AUGMENT_MANIFEST_SCRIPT)
     set(AUGMENT_MANIFEST_SCRIPT
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/manifest/dwarf_manifest.py"
@@ -30,9 +14,7 @@ function(augment_manifest)
 
     if(MSVC)
         target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:/Zi>)
-        message(WARNING
-            "augment_manifest: no PDB manifest generator yet; "
-            "${AM_OUTPUT} will not be produced on this toolchain")
+        message(WARNING "augment_manifest: no PDB manifest generator yet; ${AM_OUTPUT} not produced")
         return()
     endif()
 
@@ -44,10 +26,15 @@ function(augment_manifest)
                     $<TARGET_FILE:${AM_TARGET}>.dSYM ${AM_OUTPUT}
             VERBATIM)
     else()
-        target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:-gsplit-dwarf>)
+        target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:-g>)
         add_custom_command(TARGET ${AM_TARGET} POST_BUILD
             COMMAND ${Python3_EXECUTABLE} ${AUGMENT_MANIFEST_SCRIPT}
                     $<TARGET_FILE:${AM_TARGET}> ${AM_OUTPUT}
             VERBATIM)
+        if(CMAKE_BUILD_TYPE STREQUAL "Release")
+            add_custom_command(TARGET ${AM_TARGET} POST_BUILD
+                COMMAND ${CMAKE_OBJCOPY} --strip-debug $<TARGET_FILE:${AM_TARGET}>
+                VERBATIM)
+        endif()
     endif()
 endfunction()
