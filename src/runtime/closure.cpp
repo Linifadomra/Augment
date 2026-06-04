@@ -1,6 +1,6 @@
 #include "augment/augment.hpp"
 
-#include <ffi/ffi.h>
+#include <ffi.h>
 
 #include <cstdio>
 #include <fstream>
@@ -37,6 +37,11 @@ std::unordered_map<std::string, Signature>& sig_table() {
 
 std::unordered_map<std::string, Closure*>& closure_table() {
     static std::unordered_map<std::string, Closure*> t;
+    return t;
+}
+
+std::unordered_map<std::string, int>& field_table() {
+    static std::unordered_map<std::string, int> t;
     return t;
 }
 
@@ -104,6 +109,14 @@ extern "C" AUGMENT_API int augment_load_signatures(const char* path) {
     while (std::getline(f, line)) {
         if (line.empty() || line[0] == '#')
             continue;
+        if (line[0] == '@') {
+            std::istringstream fs(line);
+            std::string at, name;
+            int off;
+            if (fs >> at >> name >> off)
+                field_table()[name] = off;
+            continue;
+        }
         std::istringstream ss(line);
         std::string sym, qualified, member, rtype, a;
         if (!(ss >> sym >> qualified >> member >> rtype))
@@ -118,6 +131,11 @@ extern "C" AUGMENT_API int augment_load_signatures(const char* path) {
         ++n;
     }
     return n;
+}
+
+extern "C" AUGMENT_API int augment_field_offset(const char* field) {
+    auto it = field_table().find(field);
+    return it == field_table().end() ? -1 : it->second;
 }
 
 extern "C" AUGMENT_API void* augment_make_closure(const char* symbol) {

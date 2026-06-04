@@ -16,6 +16,7 @@ option(AUGMENT_USE_FETCHCONTENT "Build Augment using FetchContent"  ON )
 
 # == DEPENDENCIES ==
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/dobby.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/libffi.cmake)
 
 # == TARGETS ==
 add_library(augment)

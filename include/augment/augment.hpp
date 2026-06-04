@@ -83,6 +83,7 @@ AUGMENT_API void  augment_register_signature(const char* symbol, int is_member,
                                              const char* rtype, const char** atypes,
                                              unsigned nargs);
 AUGMENT_API int   augment_load_signatures(const char* path);
+AUGMENT_API int   augment_field_offset(const char* field);
 AUGMENT_API void* augment_make_closure(const char* symbol);
 AUGMENT_API void  augment_call(const char* symbol, void** args, unsigned nargs);
 #ifdef __cplusplus

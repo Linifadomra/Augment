@@ -76,6 +76,58 @@ def parse(text):
     return out
 
 
+DIE_RE = re.compile(r'^0x[0-9a-fA-F]+:(\s*)(DW_TAG_\w+)')
+F_NAME_RE = re.compile(r'DW_AT_name\s*\("([^"]*)"\)')
+F_LOC_RE = re.compile(r'DW_AT_data_member_location\s*\([^)]*?(0x[0-9a-fA-F]+|\d+)\)')
+F_TYPE_RE = re.compile(r'DW_AT_type\s*\([^"]*"([^"]*)"\)')
+
+
+def parse_fields(text):
+    out = []          # (qualified, offset, kind)
+    stack = []        # (indent, struct_name or None)
+    cur = None
+
+    def finalize(c):
+        if c is None:
+            return
+        while stack and stack[-1][0] >= c["indent"]:
+            stack.pop()
+        if c["kind"] == "type":
+            stack.append((c["indent"], c["name"]))
+        elif c["kind"] == "member" and stack and c["name"] and c["loc"] is not None:
+            s = stack[-1][1]
+            if s and " " not in s and " " not in c["name"]:
+                out.append((s + "::" + c["name"], c["loc"], ffi_of(c["type"] or "")))
+
+    for line in text.splitlines():
+        m = DIE_RE.match(line)
+        if m:
+            finalize(cur)
+            indent, tag = len(m.group(1)), m.group(2)
+            if tag in ("DW_TAG_structure_type", "DW_TAG_class_type", "DW_TAG_union_type"):
+                cur = {"kind": "type", "indent": indent, "name": None}
+            elif tag == "DW_TAG_member":
+                cur = {"kind": "member", "indent": indent, "name": None, "loc": None, "type": None}
+            else:
+                cur = {"kind": "other", "indent": indent}
+        elif cur is not None:
+            if cur["kind"] in ("type", "member") and cur["name"] is None:
+                nm = F_NAME_RE.search(line)
+                if nm:
+                    cur["name"] = nm.group(1)
+                    continue
+            if cur["kind"] == "member":
+                lm = F_LOC_RE.search(line)
+                if lm:
+                    cur["loc"] = int(lm.group(1), 0)
+                elif cur["type"] is None:
+                    tm = F_TYPE_RE.search(line)
+                    if tm:
+                        cur["type"] = tm.group(1)
+    finalize(cur)
+    return out
+
+
 def main():
     dsym, outpath = sys.argv[1], sys.argv[2]
     text = subprocess.run([DWARFDUMP, "--debug-info", dsym],
@@ -92,6 +144,8 @@ def main():
                          capture_output=True, text=True, encoding="utf-8").stdout.splitlines()
     qmap = dict(zip(mangled, dem))
 
+    fields = parse_fields(text)
+
     n = 0
     with open(outpath, "w") as f:
         for m, (member, ret, params) in funcs.items():
@@ -100,7 +154,15 @@ def main():
                 q = m
             f.write(" ".join([m, q, "1" if member else "0", ret] + params) + "\n")
             n += 1
-    print(f"dwarf_manifest: {n} functions -> {outpath}")
+        seen = set()
+        nf = 0
+        for name, off, kind in fields:
+            if name in seen:
+                continue
+            seen.add(name)
+            f.write(f"@ {name} {off} {kind}\n")
+            nf += 1
+    print(f"dwarf_manifest: {n} functions, {nf} fields -> {outpath}")
 
 
 if __name__ == "__main__":

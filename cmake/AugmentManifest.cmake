@@ -4,6 +4,12 @@ if(NOT DEFINED AUGMENT_MANIFEST_SCRIPT)
         CACHE FILEPATH "Path to dwarf_manifest.py")
 endif()
 
+if(NOT DEFINED AUGMENT_STRUCT_SCRIPT)
+    set(AUGMENT_STRUCT_SCRIPT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/manifest/struct_gen.py"
+        CACHE FILEPATH "Path to struct_gen.py")
+endif()
+
 function(augment_manifest)
     cmake_parse_arguments(AM "" "TARGET;OUTPUT" "" ${ARGN})
     if(NOT AM_TARGET OR NOT AM_OUTPUT)
@@ -37,4 +43,32 @@ function(augment_manifest)
                 VERBATIM)
         endif()
     endif()
+endfunction()
+
+function(augment_structs)
+    cmake_parse_arguments(AS "" "TARGET;LIST;OUTPUT;NAMESPACE" "" ${ARGN})
+    if(NOT AS_TARGET OR NOT AS_LIST OR NOT AS_OUTPUT)
+        message(FATAL_ERROR "augment_structs: TARGET, LIST and OUTPUT are required")
+    endif()
+
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+    if(MSVC)
+        message(WARNING "augment_structs: no PDB struct generator yet; ${AS_OUTPUT} not produced")
+        return()
+    endif()
+
+    if(NOT AS_NAMESPACE)
+        set(AS_NAMESPACE "CR.Game")
+    endif()
+    if(APPLE)
+        set(_dwarf $<TARGET_FILE:${AS_TARGET}>.dSYM)
+    else()
+        set(_dwarf $<TARGET_FILE:${AS_TARGET}>)
+    endif()
+
+    add_custom_command(TARGET ${AS_TARGET} POST_BUILD
+        COMMAND ${Python3_EXECUTABLE} ${AUGMENT_STRUCT_SCRIPT}
+                ${_dwarf} ${AS_LIST} ${AS_OUTPUT} --namespace ${AS_NAMESPACE}
+        VERBATIM)
 endfunction()
