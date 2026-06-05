@@ -36,6 +36,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 | `AUGMENT_TESTS` | `OFF` | Build the test suite |
 | `AUGMENT_INSTALL` | `ON` | Enable install targets |
 | `AUGMENT_USE_FETCHCONTENT` | `ON` | Use FetchContent for Augment (recommended due to Dobby) |
+| `AUGMENT_FFI` | `OFF` | Build FFI bindings for Augment |
 
 ---
 
