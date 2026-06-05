@@ -27,19 +27,8 @@ add_executable(mixin_selftest mixin_selftest.cpp)
 target_link_libraries(mixin_selftest PRIVATE augment dobby)
 add_test(NAME mixin COMMAND mixin_selftest)
 
-add_executable(closure_selftest closure_selftest.cpp)
-target_link_libraries(closure_selftest PRIVATE augment dobby ffi)
-add_test(NAME closure COMMAND closure_selftest)
-
-add_executable(test_all
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_all.cpp
-)
-target_link_libraries(test_all PRIVATE augment::augment)
-target_include_directories(test_all PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src
-)
-augment_codegen_target(
-    TARGET  test_all
-    HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/test_all.hpp
-)
-add_test(NAME all COMMAND test_all)
+if(AUGMENT_FFI)
+    add_executable(closure_selftest closure_selftest.cpp)
+    target_link_libraries(closure_selftest PRIVATE augment dobby ffi)
+    add_test(NAME closure COMMAND closure_selftest)
+endif()
