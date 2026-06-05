@@ -65,6 +65,8 @@ function(augment_codegen_target)
         ${ARGN}
     )
 
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
     # -- Validate required args --
     if(NOT ACG_TARGET)
         message(FATAL_ERROR "[augment_codegen_target] TARGET is required")
