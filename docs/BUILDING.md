@@ -36,6 +36,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 | `AUGMENT_INSTALL` | `OFF` | Enable install targets |
 | `AUGMENT_BUILD_EXAMPLES` | `OFF` | Build Augment examples |
 | `BUILD_SHARED_LIBS` | `OFF` | Build Augment as a shared lib (propagates to Dobby) |
+| `AUGMENT_FFI` | `OFF` | Build FFI bindings for Augment |
 
 ---
 

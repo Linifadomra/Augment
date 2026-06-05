@@ -79,6 +79,8 @@ AUGMENT_API void augment_install_all(void);
 AUGMENT_API void augment_clear(void);
 AUGMENT_API const char* augment_inspect(const char* symbol);
 AUGMENT_API void* augment_resolve(const char* symbol);
+
+#if AUGMENT_FFI
 AUGMENT_API void  augment_register_signature(const char* symbol, int is_member,
                                              const char* rtype, const char** atypes,
                                              unsigned nargs);
@@ -86,6 +88,14 @@ AUGMENT_API int   augment_load_signatures(const char* path);
 AUGMENT_API int   augment_field_offset(const char* field);
 AUGMENT_API void* augment_make_closure(const char* symbol);
 AUGMENT_API void  augment_call(const char* symbol, void** args, unsigned nargs);
+#else
+AUGMENT_API inline void augment_register_signature(...) {}
+AUGMENT_API inline int  augment_load_signatures(...) { return 0; }
+AUGMENT_API inline void* augment_make_closure(const char*) { return nullptr; }
+AUGMENT_API inline void  augment_call(...) {}
+AUGMENT_API inline int  augment_field_offset(const char*) { return -1; }
+#endif /* AUGMENT_FFI */
+
 #ifdef __cplusplus
 }
 #endif
