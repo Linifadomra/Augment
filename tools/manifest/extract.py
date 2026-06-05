@@ -27,9 +27,11 @@ def assemble(text, demangle=None):
     if demangle is None:
         demangle = _demangle(sorted(set(mangled)))
 
-    functions = dwarf.extract_functions(roots, demangle)
+    structs = dwarf.extract_structs(roots)
+    struct_names = {s["name"] for s in structs}
+    functions = dwarf.extract_functions(roots, demangle, struct_names)
     functions.sort(key=lambda f: (f["flat"], f["mangled"]))
-    structs = sorted(dwarf.extract_structs(roots), key=lambda s: s["name"])
+    structs = sorted(structs, key=lambda s: s["name"])
     enums = sorted(dwarf.extract_enums(roots), key=lambda e: e["name"])
     globals_ = sorted(dwarf.extract_globals(roots), key=lambda g: g["name"])
     typedefs = sorted(dwarf.extract_typedefs(roots), key=lambda t: t["alias"])

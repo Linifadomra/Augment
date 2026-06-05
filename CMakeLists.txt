@@ -10,7 +10,6 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 # == OPTIONS ==
 option(AUGMENT_TESTS            "Build the test suite"              OFF)
 option(AUGMENT_INSTALL          "Enable install targets"            OFF)
-option(AUGMENT_FFI              "Build FFI bindings"                OFF)
 option(AUGMENT_BUILD_EXAMPLES   "Build Augment examples"            OFF)
 option(BUILD_SHARED_LIBS        "Build Augment as a shared library" OFF)
 option(AUGMENT_USE_FETCHCONTENT "Build Augment using FetchContent"  ON )
@@ -27,13 +26,12 @@ target_sources(augment PRIVATE
     src/runtime/registry.cpp
     src/runtime/chain.cpp
     src/runtime/conflict.cpp
+    src/runtime/closure.cpp
+    src/runtime/manifest.cpp
+    src/runtime/introspect.cpp
     src/platform/hook_backend.cpp
     src/platform/sym_resolve.cpp
 )
-
-if(AUGMENT_FFI)
-    target_sources(augment PRIVATE src/runtime/closure.cpp)
-endif()
 
 include(GenerateExportHeader)
 generate_export_header(augment
@@ -53,12 +51,9 @@ target_include_directories(augment
 target_link_libraries(augment
     PRIVATE
         dobby
+    PUBLIC
+        ffi
 )
-
-if(AUGMENT_FFI)
-    target_link_libraries(augment PUBLIC ffi)
-    target_compile_definitions(augment PRIVATE AUGMENT_FFI=1)
-endif()
 
 # == Codegen Helper Function ==
 include(cmake/AugmentCodegen.cmake)

@@ -85,15 +85,20 @@ def pointee_struct(t):
 def _flat(qualified):
     return qualified.split("(")[0].strip().replace("::", "_").replace(" ", "")
 
-def _arg(p):
+def _arg(p, struct_names):
     t = p.attr("DW_AT_type") or ""
+    base = _clean(t)
+    if not (t.endswith("*") or t.endswith("&")) and struct_names and base in struct_names:
+        return {"name": p.attr("DW_AT_name"), "kind": "struct:" + base, "view": base}
     a = {"name": p.attr("DW_AT_name"), "kind": ffi_kind(t)[0]}
     v = pointee_struct(t)
     if v:
         a["view"] = v
     return a
 
-def extract_functions(roots, demangle):
+def extract_functions(roots, demangle, struct_names=None):
+    if struct_names is None:
+        struct_names = set()
     out = []
     def visit(die):
         if die.tag == "DW_TAG_subprogram":
@@ -102,9 +107,14 @@ def extract_functions(roots, demangle):
                 params = [c for c in die.children if c.tag == "DW_TAG_formal_parameter"]
                 member = bool(params and params[0].attr("DW_AT_artificial"))
                 arg_dies = params[1:] if member else params
-                args = [_arg(p) for p in arg_dies]
+                args = [_arg(p, struct_names) for p in arg_dies]
                 self_view = pointee_struct(params[0].attr("DW_AT_type") or "") if member else None
-                ret = ffi_kind(die.attr("DW_AT_type") or "void")[0]
+                ret_t = die.attr("DW_AT_type") or "void"
+                ret_base = _clean(ret_t)
+                if not (ret_t.endswith("*") or ret_t.endswith("&")) and struct_names and ret_base in struct_names:
+                    ret = "struct:" + ret_base
+                else:
+                    ret = ffi_kind(ret_t)[0]
                 q = demangle.get(mangled, mangled)
                 low = die.attr("DW_AT_low_pc")
                 rva = hex(int(low, 0)) if low else None

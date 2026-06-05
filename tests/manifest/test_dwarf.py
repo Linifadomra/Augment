@@ -89,3 +89,12 @@ def test_extract_typedefs(sample_text):
     roots = dwarf.parse_dies(sample_text)
     ts = dwarf.extract_typedefs(roots)
     assert {"alias": "BOOL", "kind": "i32"} in ts
+
+def test_extract_functions_byval_struct(sample_text):
+    roots = dwarf.parse_dies(sample_text)
+    names = {s["name"] for s in dwarf.extract_structs(roots)}
+    fns = dwarf.extract_functions(roots, {"_Z6addVec4cXyzS_": "addVec(cXyz, cXyz)"}, names)
+    f = next(x for x in fns if x["flat"] == "addVec")
+    assert f["ret"] == "struct:cXyz"
+    assert f["args"][0]["kind"] == "struct:cXyz"
+    assert f["args"][1]["kind"] == "struct:cXyz"

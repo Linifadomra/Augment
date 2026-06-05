@@ -80,21 +80,45 @@ AUGMENT_API void augment_clear(void);
 AUGMENT_API const char* augment_inspect(const char* symbol);
 AUGMENT_API void* augment_resolve(const char* symbol);
 
-#if AUGMENT_FFI
 AUGMENT_API void  augment_register_signature(const char* symbol, int is_member,
                                              const char* rtype, const char** atypes,
                                              unsigned nargs);
+AUGMENT_API void  augment_register_struct(const char* name, const char** member_kinds,
+                                          unsigned n);
 AUGMENT_API int   augment_load_signatures(const char* path);
 AUGMENT_API int   augment_field_offset(const char* field);
 AUGMENT_API void* augment_make_closure(const char* symbol);
 AUGMENT_API void  augment_call(const char* symbol, void** args, unsigned nargs);
-#else
-AUGMENT_API inline void augment_register_signature(...) {}
-AUGMENT_API inline int  augment_load_signatures(...) { return 0; }
-AUGMENT_API inline void* augment_make_closure(const char*) { return nullptr; }
-AUGMENT_API inline void  augment_call(...) {}
-AUGMENT_API inline int  augment_field_offset(const char*) { return -1; }
-#endif /* AUGMENT_FFI */
+
+/* MANIFEST + REFLECTION (Plan 2) */
+
+typedef struct AugmentArg   { const char* name; const char* kind; const char* view; } AugmentArg;
+typedef struct AugmentField { const char* name; unsigned offset; const char* kind; int len; const char* view; } AugmentField;
+
+AUGMENT_API int  augment_manifest_load(const char* path);   /* returns #functions loaded, 0 on failure */
+
+/* resolve a flat name to a unique mangled key (the install/register key) */
+AUGMENT_API int         augment_fn_count(const char* flat);
+AUGMENT_API const char* augment_fn_mangled(const char* flat, int i);     /* i-th overload, or NULL */
+AUGMENT_API const char* augment_fn_loc(const char* flat, int i);         /* "file:line" of i-th, or "" */
+AUGMENT_API const char* augment_resolve_at(const char* flat, const char* file_substr); /* mangled or NULL */
+AUGMENT_API const char* augment_resolve_sig(const char* flat, const char* sig);        /* "ptr,i32" -> mangled or NULL */
+
+/* introspection (borrowed pointers, valid until the next call of the same fn on this thread) */
+AUGMENT_API int augment_fn_params(const char* mangled, const AugmentArg** out);
+AUGMENT_API int augment_struct_fields(const char* name, const AugmentField** out);
+typedef struct AugmentEnumVal { const char* name; long long value; } AugmentEnumVal;
+AUGMENT_API int  augment_enum_values(const char* name, const AugmentEnumVal** out);
+AUGMENT_API int  augment_global_addr(const char* name, const char** kind_out, void** addr_out);
+
+AUGMENT_API const char* augment_fn_self_view(const char* mangled);   /* class name, or "" */
+AUGMENT_API const char* augment_fn_ret(const char* mangled);         /* return kind, or "void" */
+
+/* neutral typed memory access (also used by the C# door later) */
+AUGMENT_API void augment_mem_read (void* base, int offset, const char* kind, void* out);
+AUGMENT_API void augment_mem_write(void* base, int offset, const char* kind, const void* in);
+AUGMENT_API int  augment_mem_read_str (void* base, int offset, int cap, char* out);  /* returns length */
+AUGMENT_API void augment_mem_write_str(void* base, int offset, int cap, const char* s);
 
 #ifdef __cplusplus
 }
