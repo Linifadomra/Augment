@@ -1,0 +1,57 @@
+0x0000002b: DW_TAG_structure_type
+              DW_AT_name	("daCow_c")
+              DW_AT_byte_size	(0x220)
+0x00000040:   DW_TAG_member
+                DW_AT_name	("mProcess")
+                DW_AT_type	(0x99 "int")
+                DW_AT_data_member_location	(0x1c)
+0x00000048:   DW_TAG_member
+                DW_AT_name	("mName")
+                DW_AT_type	(0x9a "char[8]")
+                DW_AT_data_member_location	(0x40)
+0x00000050:   DW_TAG_member
+                DW_AT_name	("mAcch")
+                DW_AT_type	(0x9b "daCph_c *")
+                DW_AT_data_member_location	(0x80)
+0x00000061: DW_TAG_enumeration_type
+              DW_AT_name	("Action")
+0x00000070:   DW_TAG_enumerator
+                DW_AT_name	("idle")
+                DW_AT_const_value	(0)
+0x00000078:   DW_TAG_enumerator
+                DW_AT_name	("angry")
+                DW_AT_const_value	(3)
+0x00000090: DW_TAG_subprogram
+              DW_AT_linkage_name	("_ZN7daCow_c7ExecuteEv")
+              DW_AT_name	("Execute")
+              DW_AT_low_pc	(0x00801234)
+              DW_AT_decl_file	("d/actor/d_a_cow.cpp")
+              DW_AT_decl_line	(120)
+0x000000b0:   DW_TAG_formal_parameter
+                DW_AT_type	(0x9c "daCow_c *")
+                DW_AT_artificial	(true)
+0x000000c0: DW_TAG_subprogram
+              DW_AT_linkage_name	("_Z8setStageP7daCph_ci")
+              DW_AT_name	("setStage")
+              DW_AT_low_pc	(0x00802abc)
+0x000000c4:   DW_TAG_formal_parameter
+                DW_AT_name	("stage")
+                DW_AT_type	(0x9b "daCph_c *")
+0x000000c8:   DW_TAG_formal_parameter
+                DW_AT_name	("point")
+                DW_AT_type	(0x99 "int")
+0x000000d0: DW_TAG_variable
+              DW_AT_name	("g_dComIfG")
+              DW_AT_type	(0x9b "daCph_c *")
+              DW_AT_location	(DW_OP_addr 0x802000)
+              DW_AT_external	(true)
+0x000000e0: DW_TAG_typedef
+              DW_AT_name	("BOOL")
+              DW_AT_type	(0x99 "int")
+0x00000100: DW_TAG_structure_type
+              DW_AT_name	("daCow_c")
+0x00000110:   DW_TAG_enumeration_type
+                DW_AT_name	("Mode")
+0x00000120:     DW_TAG_enumerator
+                  DW_AT_name	("walk")
+                  DW_AT_const_value	(1)
