@@ -57,6 +57,7 @@ target_link_libraries(augment
 
 if(AUGMENT_FFI)
     target_link_libraries(augment PUBLIC ffi)
+    target_compile_definitions(augment PRIVATE AUGMENT_FFI=1)
 endif()
 
 # == Codegen Helper Function ==
