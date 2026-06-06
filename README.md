@@ -59,6 +59,7 @@ Augment supports two first-class resolution paths depending on your build setup:
 * augment_resolve is the primary API here
 * More limited than the manifest path but requires no binary artifact at runtime
 
+The two paths can be used together or independently. Manifest covers internal symbols, plat::sym_resolve covers exported symbols not in the manifest. resolve_target handles the fallback automatically if both are present. Most projects will only need one path.
 
 ## Library Structure
 
