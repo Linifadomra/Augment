@@ -96,6 +96,9 @@ def _arg(p, struct_names):
         a["view"] = v
     return a
 
+def _named_count(f):
+    return sum(1 for a in f["args"] if a.get("name"))
+
 def extract_functions(roots, demangle, struct_names=None):
     if struct_names is None:
         struct_names = set()
@@ -128,7 +131,17 @@ def extract_functions(roots, demangle, struct_names=None):
             visit(c)
     for r in roots:
         visit(r)
-    return out
+    best = {}
+    for f in out:
+        m = f["mangled"]
+        cur = best.get(m)
+        if cur is None:
+            best[m] = f
+        elif (f["rva"] is not None) and (cur["rva"] is None):
+            best[m] = f
+        elif (f["rva"] is None) == (cur["rva"] is None) and _named_count(f) > _named_count(cur):
+            best[m] = f
+    return list(best.values())
 
 _STRUCT_TAGS = ("DW_TAG_structure_type", "DW_TAG_class_type", "DW_TAG_union_type")
 
@@ -187,7 +200,12 @@ def extract_enums(roots):
             visit(c, child_owner)
     for r in roots:
         visit(r, None)
-    return out
+    best = {}
+    for e in out:
+        cur = best.get(e["name"])
+        if cur is None or len(e["values"]) > len(cur["values"]):
+            best[e["name"]] = e
+    return list(best.values())
 
 _ADDR_RE = re.compile(r"DW_OP_addr\s+(0x[0-9a-fA-F]+)")
 
@@ -206,7 +224,11 @@ def extract_globals(roots):
             visit(c, nested_in_fn)
     for r in roots:
         visit(r, False)
-    return out
+    best = {}
+    for g in out:
+        if g["name"] not in best:
+            best[g["name"]] = g
+    return list(best.values())
 
 def extract_typedefs(roots):
     out = []
