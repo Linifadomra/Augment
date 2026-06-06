@@ -91,7 +91,6 @@ bool Registry::register_augment(const char* symbol, AugmentPhase phase,
 
     chain->add(e);
 
-    // if install_all has already been called, install this chain immediately
     if (m_installed && !chain->installed)
         install_chain(symbol, *chain);
 
