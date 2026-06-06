@@ -15,15 +15,21 @@
 
 #include "runtime/registry.hpp"
 #include "runtime/conflict.hpp"
+#include "augment/manifest_internal.hpp"
 
 #include <mutex>
 #include <cstdio>
 
-// Platform layer hooks implemented in src/platform/
 namespace augment::plat {
     bool hook_install  (void* target, void* replacement, void** out_original);
     bool hook_remove   (void* target);
     void* sym_resolve  (const char* symbol);
+    intptr_t image_slide();
+}
+
+namespace augment::manifest {
+    class Reader;
+    Reader& global_reader();
 }
 
 namespace augment {
@@ -85,7 +91,6 @@ bool Registry::register_augment(const char* symbol, AugmentPhase phase,
 
     chain->add(e);
 
-    // if install_all has already been called, install this chain immediately
     if (m_installed && !chain->installed)
         install_chain(symbol, *chain);
 
@@ -100,7 +105,10 @@ void Registry::register_ptr(const char* symbol, void* ptr) {
 }
 
 void* Registry::resolve_target(const std::string& symbol) {
-    return plat::sym_resolve(symbol.c_str());
+    if (void* p = plat::sym_resolve(symbol.c_str())) return p;
+    uint64_t rva = manifest::global_reader().rva_of(symbol.c_str());
+    if (!rva) return nullptr;
+    return reinterpret_cast<void*>((uintptr_t)((intptr_t)rva + plat::image_slide()));
 }
 
 bool Registry::install_chain(const std::string& symbol, Chain& chain) {

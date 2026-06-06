@@ -45,7 +45,16 @@ std::unordered_map<std::string, int>& field_table() {
     return t;
 }
 
+std::unordered_map<std::string, ffi_type*>& struct_table() {
+    static std::unordered_map<std::string, ffi_type*> t;
+    return t;
+}
+
 ffi_type* ffi_from_kind(const std::string& k) {
+    if (k.rfind("struct:", 0) == 0) {
+        auto it = struct_table().find(k.substr(7));
+        return it != struct_table().end() ? it->second : &ffi_type_pointer;
+    }
     if (k == "void") return &ffi_type_void;
     if (k == "i8")   return &ffi_type_sint8;
     if (k == "u8")   return &ffi_type_uint8;
@@ -97,6 +106,20 @@ extern "C" AUGMENT_API void augment_register_signature(const char* symbol, int i
     for (unsigned i = 0; i < nargs; ++i)
         a.emplace_back(atypes[i]);
     register_sig(symbol, is_member != 0, rtype, a);
+}
+
+extern "C" AUGMENT_API void augment_register_struct(const char* name, const char** member_kinds,
+                                                    unsigned n) {
+    if (struct_table().count(name))
+        return;
+    ffi_type* t  = new ffi_type{};
+    t->type      = FFI_TYPE_STRUCT;
+    ffi_type** e = new ffi_type*[n + 1];
+    for (unsigned i = 0; i < n; ++i)
+        e[i] = ffi_from_kind(member_kinds[i]);
+    e[n]         = nullptr;
+    t->elements  = e;
+    struct_table()[name] = t;
 }
 
 extern "C" AUGMENT_API int augment_load_signatures(const char* path) {

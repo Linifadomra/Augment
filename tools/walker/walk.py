@@ -329,8 +329,13 @@ def emit_trampoline(sym: Symbol) -> str:
 
 # Top-level emitter
 
-def emit_ctx_hpp(symbols: list[Symbol], headers: list[str]) -> str:
-    user_includes = "\n".join(f'#include "{h}"' for h in headers)
+def make_include(header: str, root: str | None) -> str:
+    if root:
+        return os.path.relpath(header, root)
+    return os.path.basename(header)
+
+def emit_ctx_hpp(symbols: list[Symbol], headers: list[str], include_root: str | None = None) -> str:
+    user_includes = "\n".join(f'#include "{make_include(h, include_root)}"' for h in headers)
     parts = [_CTX_HEADER.format(user_includes=user_includes)]
     for sym in symbols:
         parts.append(emit_ctx_struct(sym))
@@ -367,8 +372,8 @@ def emit_trampoline_decl(sym: Symbol) -> str:
     sig = ", ".join(sig_parts)
     return f"{sym.return_type} augment_dispatch_{fname}({sig});"
 
-def emit_trampolines_cpp(symbols: list[Symbol], headers: list[str]) -> str:
-    user_includes = "\n".join(f'#include "{h}"' for h in headers)
+def emit_trampolines_cpp(symbols: list[Symbol], headers: list[str], include_root: str | None = None) -> str:
+    user_includes = "\n".join(f'#include "{make_include(h, include_root)}"' for h in headers)
     parts = [_TRAMPOLINE_HEADER.format(user_includes=user_includes)]
     parts.append('extern "C" void augment_invoke(const char* symbol, AugmentCtx* ctx);')
     parts.append('extern "C" void augment_register_ptr(const char* symbol, void* ptr);')
@@ -416,6 +421,8 @@ def parse_args() -> argparse.Namespace:
                    help="Extra clang flags, space-separated (e.g. '-std=c++17 -Iinclude')")
     p.add_argument("--json-only", action="store_true",
                    help="Emit only symbols.json, skip hpp/cpp codegen")
+    p.add_argument("--include-root", default=None,
+                help="Root directory to make include paths relative to")
     return p.parse_args()
 
 
@@ -468,11 +475,11 @@ def main():
 
     if not args.json_only:
         ctx_path = out / "augment_ctx.hpp"
-        ctx_path.write_text(emit_ctx_hpp(all_symbols, args.headers))
+        ctx_path.write_text(emit_ctx_hpp(all_symbols, args.headers, args.include_root))
         print(f"  -> {ctx_path}")
 
         tramp_path = out / "augment_trampolines.cpp"
-        tramp_path.write_text(emit_trampolines_cpp(all_symbols, args.headers))
+        tramp_path.write_text(emit_trampolines_cpp(all_symbols, args.headers, args.include_root))
         print(f"  -> {tramp_path}")
 
     sys.exit(1 if errors else 0)

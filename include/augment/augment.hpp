@@ -60,9 +60,9 @@ typedef struct AugmentRegOpts {
 
 AUGMENT_API void augment_invoke(const char* symbol, AugmentCtx* ctx);
 AUGMENT_API void* augment_before(const char* symbol, AugmentCtx* ctx);
-AUGMENT_API void  augment_after (const char* symbol, AugmentCtx* ctx);
-AUGMENT_API int   augment_enter (const char* symbol, AugmentCtx* ctx);
-AUGMENT_API int  augment_register(
+AUGMENT_API void augment_after(const char* symbol, AugmentCtx* ctx);
+AUGMENT_API int augment_enter(const char* symbol, AugmentCtx* ctx);
+AUGMENT_API int augment_register(
     const char*           symbol,
     AugmentPhase          phase,
     AugmentFn             fn,
@@ -81,20 +81,48 @@ AUGMENT_API const char* augment_inspect(const char* symbol);
 AUGMENT_API void* augment_resolve(const char* symbol);
 
 #if AUGMENT_FFI
-AUGMENT_API void  augment_register_signature(const char* symbol, int is_member,
-                                             const char* rtype, const char** atypes,
-                                             unsigned nargs);
-AUGMENT_API int   augment_load_signatures(const char* path);
-AUGMENT_API int   augment_field_offset(const char* field);
+AUGMENT_API void augment_register_signature(const char* symbol, int is_member,
+                                            const char* rtype, const char** atypes,
+                                            unsigned nargs);
+AUGMENT_API void augment_register_struct(const char* name, const char** member_kinds,
+                                         unsigned n);
+AUGMENT_API int augment_load_signatures(const char* path);
+AUGMENT_API int augment_field_offset(const char* field);
 AUGMENT_API void* augment_make_closure(const char* symbol);
-AUGMENT_API void  augment_call(const char* symbol, void** args, unsigned nargs);
+AUGMENT_API void augment_call(const char* symbol, void** args, unsigned nargs);
 #else
-AUGMENT_API inline void augment_register_signature(...) {}
-AUGMENT_API inline int  augment_load_signatures(...) { return 0; }
-AUGMENT_API inline void* augment_make_closure(const char*) { return nullptr; }
-AUGMENT_API inline void  augment_call(...) {}
-AUGMENT_API inline int  augment_field_offset(const char*) { return -1; }
-#endif /* AUGMENT_FFI */
+inline void augment_register_signature(const char*, int, const char*, const char**, unsigned) {}
+inline void augment_register_struct(const char*, const char**, unsigned) {}
+inline int augment_load_signatures(const char*) { return 0; }
+inline int augment_field_offset(const char*) { return -1; }
+inline void* augment_make_closure(const char*) { return nullptr; }
+inline void augment_call(const char*, void**, unsigned) {}
+#endif
+
+typedef struct AugmentArg   { const char* name; const char* kind; const char* view; } AugmentArg;
+typedef struct AugmentField { const char* name; unsigned offset; const char* kind; int len; const char* view; } AugmentField;
+
+AUGMENT_API int augment_manifest_load(const char* path);
+
+AUGMENT_API int augment_fn_count(const char* flat);
+AUGMENT_API const char* augment_fn_mangled(const char* flat, int i);
+AUGMENT_API const char* augment_fn_loc(const char* flat, int i);
+AUGMENT_API const char* augment_resolve_at(const char* flat, const char* file_substr);
+AUGMENT_API const char* augment_resolve_sig(const char* flat, const char* sig);
+
+AUGMENT_API int augment_fn_params(const char* mangled, const AugmentArg** out);
+AUGMENT_API int augment_struct_fields(const char* name, const AugmentField** out);
+typedef struct AugmentEnumVal { const char* name; long long value; } AugmentEnumVal;
+AUGMENT_API int augment_enum_values(const char* name, const AugmentEnumVal** out);
+AUGMENT_API int augment_global_addr(const char* name, const char** kind_out, void** addr_out);
+
+AUGMENT_API const char* augment_fn_self_view(const char* mangled);
+AUGMENT_API const char* augment_fn_ret(const char* mangled);
+
+AUGMENT_API void augment_mem_read(void* base, int offset, const char* kind, void* out);
+AUGMENT_API void augment_mem_write(void* base, int offset, const char* kind, const void* in);
+AUGMENT_API int augment_mem_read_str(void* base, int offset, int cap, char* out);
+AUGMENT_API void augment_mem_write_str(void* base, int offset, int cap, const char* s);
 
 #ifdef __cplusplus
 }
