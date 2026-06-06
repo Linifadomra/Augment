@@ -41,7 +41,8 @@ MixinRegistry      ← same chain as above, symbol lookup by name
 Augment supports two first-class resolution paths depending on your build setup:
 
 ### Manifest Path
-> [!NOTE] Best suited for shipping titles where full build artifacts are available.
+> [!NOTE] 
+> Best suited for shipping titles where full build artifacts are available.
 
 * C++ source + DWARF → build-time pipeline → binary manifest artifact
 * Loaded at runtime via augment_manifest_load(path)
@@ -50,7 +51,8 @@ Augment supports two first-class resolution paths depending on your build setup:
 * resolve_target uses manifest RVA + image_slide() as primary, falls back to plat::sym_resolve
 
 ### LibClang Walker Path
-> [!NOTE] Best suited for mod tooling or environments without a full manifest.
+> [!NOTE] 
+> Best suited for mod tooling or environments without a full manifest.
 
 * walk.py analyzes C++ source at build time via LibClang
 * Emits `symbols.json` artifact containing stable mangled symbol names and address offsets
