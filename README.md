@@ -63,6 +63,14 @@ Augment supports two first-class resolution paths depending on your build setup:
 
 The two paths can be used together or independently. Manifest covers internal symbols, plat::sym_resolve covers exported symbols not in the manifest. resolve_target handles the fallback automatically if both are present. Most projects will only need one path.
 
+## Conflict System
+Augment includes a contract-based conflict resolution system for augment ordering and exclusivity:
+
+- **Order**: two augments write or read/write the same domain at differing priorities. Execution order becomes priority-dependent, logged as a warning
+- **Hard**: two augments are structurally incompatible. Two `replace` hooks on the same symbol, or two hooks writing the same domain at equal priority with no resolution. Second registration is rejected outright.
+
+Conflicts are declared via the `contract` field of `AugmentRegOpts`, passed to `augment_register` at registration time.
+
 ## Library Structure
 
 Library structure (built [here](https://tree.nathanfriend.com/?s=(%27optiQs!(%27fancy!true~fullPath!false~trailHgSlash!true~rootDot!false)~F(%27F%27A42tests6testRuites2969%20modules%20%7Be.g.T4_codegenVdocsWBUILDING.md2HcludeWa42Ka4.hppEpublic-facHg%20API2srcWruntime3*0registry%20%2B7r8terfaceWplatform3EbacJndTbstracO%7BDobby%20wirHg%2CRym7Vtools6Pyth5libclang%20walJr%20hooJd8to%2092CMaJLists.txtK*0cQfiguraO%2B8stallaOscript%27)~versiQ!%271%27)*%20E%E2%86%90%202%5Cn*3%2FK*4ugment5Q%2063KK07%20resolve8%20H9cmaJE%200Fsource!HinJkeK**Oti5QonR%20sT%20aV%7D2W2*%01WVTRQOKJHFE987654320*)):
@@ -82,10 +90,9 @@ Augment/
 ├── tools/              ← Python libclang walker hooked into cmake
 └── CMakeLists.txt      ← configuration + installation script
 ```
-## Symbol resolution
+## Usage
 
-- **Build-time** (libclang, analysis-only.): C++ source → Python `walk.py` → stable mangled symbol names → address offsets → symbol map artifact.
-- **Runtime**: base_address + offset → function pointer. Works stripped, works in release, works on every platform.
+A full usage example including Luau scripting support, the Petrichor.Mod lifecycle, and the foreign language consumer path can be found in [Petrichor](https://github.com/Linifadomra/Petrichor), our game-agnostic C++ modloader library built on Augment.
 
 ## Building
 
