@@ -66,7 +66,6 @@ private:
     uint32_t m_pbase = 0;
     std::unordered_map<std::string, uint64_t> m_rva;
     std::unordered_map<std::string, std::string> m_flat_of;
-    mutable std::vector<ArgView> m_argscratch;
 };
 
 } // namespace augment::manifest

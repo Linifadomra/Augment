@@ -98,3 +98,23 @@ def test_extract_functions_byval_struct(sample_text):
     assert f["ret"] == "struct:cXyz"
     assert f["args"][0]["kind"] == "struct:cXyz"
     assert f["args"][1]["kind"] == "struct:cXyz"
+
+def test_decl_file_index_is_not_a_loc():
+    text = (
+        '0x00000010: DW_TAG_subprogram\n'
+        '              DW_AT_linkage_name\t("_Z3barv")\n'
+        '              DW_AT_name\t("bar")\n'
+        '              DW_AT_low_pc\t(0x00805000)\n'
+        '              DW_AT_decl_file\t(0x01)\n'
+        '              DW_AT_decl_line\t(7)\n'
+    )
+    roots = dwarf.parse_dies(text)
+    fns = dwarf.extract_functions(roots, {"_Z3barv": "bar()"})
+    f = next(x for x in fns if x["flat"] == "bar")
+    assert f["loc"] is None
+
+def test_decl_file_path_is_a_loc(sample_text):
+    roots = dwarf.parse_dies(sample_text)
+    fns = dwarf.extract_functions(roots, {"_ZN7daCow_c7ExecuteEv": "daCow_c::Execute()"})
+    ex = next(x for x in fns if x["flat"] == "daCow_c_Execute")
+    assert ex["loc"] == "d/actor/d_a_cow.cpp:120"

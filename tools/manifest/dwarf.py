@@ -123,7 +123,7 @@ def extract_functions(roots, demangle, struct_names=None):
                 rva = hex(int(low, 0)) if low else None
                 df = die.attr("DW_AT_decl_file")
                 dl = die.attr("DW_AT_decl_line")
-                loc = f"{df}:{dl}" if df and dl else None
+                loc = f"{df}:{dl}" if df and dl and ("/" in df or "." in df) else None
                 out.append({"flat": _flat(q), "mangled": mangled, "member": member,
                             "self_view": self_view, "rva": rva, "loc": loc,
                             "ret": ret, "args": args})

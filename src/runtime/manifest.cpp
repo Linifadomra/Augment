@@ -60,12 +60,13 @@ void Reader::read_func(const uint8_t* p, FuncView* out) const {
     out->ret       = str(rd<uint32_t>(p));      p += 4;
     out->self_view = str(rd<uint32_t>(p));      p += 4;
     out->nargs     = rd<uint32_t>(p);           p += 4;
-    m_argscratch.clear();
+    static thread_local std::vector<ArgView> scratch;
+    scratch.clear();
     for (uint32_t i = 0; i < out->nargs; ++i) {
-        m_argscratch.push_back({ str(rd<uint32_t>(p)), str(rd<uint32_t>(p + 4)), str(rd<uint32_t>(p + 8)) });
+        scratch.push_back({ str(rd<uint32_t>(p)), str(rd<uint32_t>(p + 4)), str(rd<uint32_t>(p + 8)) });
         p += 12;
     }
-    out->args = m_argscratch.data();
+    out->args = scratch.data();
 }
 
 uint32_t Reader::func_count(const char* flat) const {

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <functional>
 #include <cstring>
 #include <cstdint>
 
@@ -14,13 +15,14 @@ extern "C" AUGMENT_API int augment_manifest_load(const char* path) {
     if (!r.load(path)) return 0;
     int n = 0;
     std::set<std::string> registered;
-    auto ensure_struct = [&](const char* kind) {
+    std::function<void(const char*)> ensure_struct = [&](const char* kind) {
         if (std::strncmp(kind, "struct:", 7) != 0) return;
         std::string name = kind + 7;
         if (!registered.insert(name).second) return;
         std::vector<std::string> mk;
         r.each_field(name.c_str(),
             [&](const FieldView& fv){ mk.emplace_back(fv.kind); });
+        for (auto& k : mk) ensure_struct(k.c_str());
         std::vector<const char*> mp;
         for (auto& s : mk) mp.push_back(s.c_str());
         augment_register_struct(name.c_str(), mp.data(), (unsigned)mp.size());
