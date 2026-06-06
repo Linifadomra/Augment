@@ -1,0 +1,15 @@
+{"version":2,
+ "functions":[
+   {"flat":"addVec","mangled":"_Z6addVec4cXyzS_","member":false,"self_view":null,"rva":null,"loc":null,"ret":"struct:cXyz","args":[{"name":"a","kind":"struct:cXyz","view":"cXyz"},{"name":"b","kind":"struct:cXyz","view":"cXyz"}]},
+   {"flat":"daCow_c_Execute","mangled":"_ZN7daCow_c7ExecuteEv","member":true,"self_view":"daCow_c","rva":"0x801234","loc":"d/actor/d_a_cow.cpp:120","ret":"i32","args":[]},
+   {"flat":"setStage","mangled":"_Z8setStageP7daCph_ci","member":false,"rva":"0x802abc","loc":"d/d_stage.cpp:9","ret":"void","args":[{"name":"stage","kind":"ptr","view":"daCph_c"},{"name":"point","kind":"i32"}]},
+   {"flat":"init","mangled":"_ZL4initv","member":false,"rva":"0x803000","loc":"d/a.cpp:1","ret":"void","args":[]},
+   {"flat":"init","mangled":"_ZL4initi","member":false,"rva":"0x803100","loc":"d/b.cpp:2","ret":"void","args":[{"name":"n","kind":"i32"}]}
+ ],
+ "structs":[
+   {"name":"cXyz","size":12,"fields":[{"name":"x","offset":0,"kind":"f32"},{"name":"y","offset":4,"kind":"f32"},{"name":"z","offset":8,"kind":"f32"}]},
+   {"name":"daCow_c","size":544,"fields":[{"name":"mProcess","offset":28,"kind":"i32"},{"name":"mName","offset":64,"kind":"str","len":8},{"name":"mAcch","offset":128,"kind":"ptr","view":"daCph_c"}]}
+ ],
+ "enums":[{"name":"daCow_c::Action","owner":"daCow_c","values":[{"name":"idle","value":0},{"name":"angry","value":3}]}],
+ "globals":[{"name":"g_dComIfG","kind":"ptr","addr":"0x804000"}],
+ "typedefs":[{"alias":"BOOL","kind":"i32"}]}

@@ -118,6 +118,8 @@ void* sym_resolve(const char* symbol) {
     return nullptr;
 }
 
+intptr_t image_slide() { return _dyld_get_image_vmaddr_slide(0); }
+
 uint64_t func_gap(void* target) {
     const image_syms& img = image();
     if (!img.ok) return UINT64_MAX;
@@ -218,6 +220,8 @@ void* sym_resolve(const char* symbol) {
     }
     return nullptr;
 }
+
+intptr_t image_slide() { return 0; }
 
 uint64_t func_gap(void* target) {
     const image_syms& img = image();
@@ -326,6 +330,16 @@ uint64_t func_gap(void* target) {
         &ctx);
 
     return ctx.best;
+}
+
+intptr_t image_slide() {
+    auto* base = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
+    if (!base) return 0;
+    auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
+    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) return 0;
+    return (intptr_t)base - (intptr_t)nt->OptionalHeader.ImageBase;
 }
 
 } // namespace augment::plat

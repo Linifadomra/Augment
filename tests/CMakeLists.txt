@@ -45,3 +45,21 @@ augment_codegen_target(
     HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/test_all.hpp
 )
 add_test(NAME all COMMAND test_all)
+
+add_executable(manifest_read_test manifest_read_test.cpp)
+target_link_libraries(manifest_read_test PRIVATE augment)
+target_include_directories(manifest_read_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+add_test(NAME manifest_read COMMAND manifest_read_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(introspect_test introspect_test.cpp)
+target_link_libraries(introspect_test PRIVATE augment)
+add_test(NAME introspect COMMAND introspect_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(mem_test mem_test.cpp)
+target_link_libraries(mem_test PRIVATE augment)
+add_test(NAME mem COMMAND mem_test)
+if(AUGMENT_FFI)
+    add_executable(abi_selftest abi_selftest.cpp)
+    target_link_libraries(abi_selftest PRIVATE augment dobby ffi)
+    add_test(NAME abi COMMAND abi_selftest)
+endif()
