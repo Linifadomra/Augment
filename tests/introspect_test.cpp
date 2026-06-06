@@ -16,7 +16,9 @@ int main() {
     assert(std::strcmp(augment_resolve_sig("init", "i32"), "_ZL4initi") == 0);
     assert(std::strcmp(augment_resolve_sig("init", ""), "_ZL4initv") == 0);
 
+#if AUGMENT_FFI
     assert(augment_make_closure("_ZN7daCow_c7ExecuteEv") != nullptr);
+#endif
 
     const AugmentArg* args = nullptr;
     int na = augment_fn_params("_Z8setStageP7daCph_ci", &args);
@@ -42,7 +44,9 @@ int main() {
     assert(std::strcmp(augment_fn_self_view("_ZN7daCow_c7ExecuteEv"), "daCow_c") == 0);
     assert(std::strcmp(augment_fn_self_view("_Z8setStageP7daCph_ci"), "") == 0);
 
+#if AUGMENT_FFI
     assert(augment_make_closure("_Z6addVec4cXyzS_") != nullptr);
+#endif
 
     std::printf("PASS introspect_load\n");
     return 0;

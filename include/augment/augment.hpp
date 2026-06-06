@@ -80,6 +80,7 @@ AUGMENT_API void augment_clear(void);
 AUGMENT_API const char* augment_inspect(const char* symbol);
 AUGMENT_API void* augment_resolve(const char* symbol);
 
+#if AUGMENT_FFI
 AUGMENT_API void  augment_register_signature(const char* symbol, int is_member,
                                              const char* rtype, const char** atypes,
                                              unsigned nargs);
@@ -89,6 +90,14 @@ AUGMENT_API int   augment_load_signatures(const char* path);
 AUGMENT_API int   augment_field_offset(const char* field);
 AUGMENT_API void* augment_make_closure(const char* symbol);
 AUGMENT_API void  augment_call(const char* symbol, void** args, unsigned nargs);
+#else
+inline void  augment_register_signature(const char*, int, const char*, const char**, unsigned) {}
+inline void  augment_register_struct(const char*, const char**, unsigned) {}
+inline int   augment_load_signatures(const char*) { return 0; }
+inline int   augment_field_offset(const char*) { return -1; }
+inline void* augment_make_closure(const char*) { return nullptr; }
+inline void  augment_call(const char*, void**, unsigned) {}
+#endif
 
 /* MANIFEST + REFLECTION (Plan 2) */
 

@@ -13,10 +13,13 @@ option(AUGMENT_INSTALL          "Enable install targets"            OFF)
 option(AUGMENT_BUILD_EXAMPLES   "Build Augment examples"            OFF)
 option(BUILD_SHARED_LIBS        "Build Augment as a shared library" OFF)
 option(AUGMENT_USE_FETCHCONTENT "Build Augment using FetchContent"  ON )
+option(AUGMENT_FFI              "Build libffi closure/call support" ON )
 
 # == DEPENDENCIES ==
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/dobby.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/libffi.cmake)
+if(AUGMENT_FFI)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/libffi.cmake)
+endif()
 
 # == TARGETS ==
 add_library(augment)
@@ -26,12 +29,15 @@ target_sources(augment PRIVATE
     src/runtime/registry.cpp
     src/runtime/chain.cpp
     src/runtime/conflict.cpp
-    src/runtime/closure.cpp
     src/runtime/manifest.cpp
     src/runtime/introspect.cpp
     src/platform/hook_backend.cpp
     src/platform/sym_resolve.cpp
 )
+
+if(AUGMENT_FFI)
+    target_sources(augment PRIVATE src/runtime/closure.cpp)
+endif()
 
 include(GenerateExportHeader)
 generate_export_header(augment
@@ -48,12 +54,14 @@ target_include_directories(augment
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_link_libraries(augment
-    PRIVATE
-        dobby
-    PUBLIC
-        ffi
-)
+target_link_libraries(augment PRIVATE dobby)
+
+if(AUGMENT_FFI)
+    target_link_libraries(augment PUBLIC ffi)
+    target_compile_definitions(augment PUBLIC AUGMENT_FFI=1)
+else()
+    target_compile_definitions(augment PUBLIC AUGMENT_FFI=0)
+endif()
 
 # == Codegen Helper Function ==
 include(cmake/AugmentCodegen.cmake)
