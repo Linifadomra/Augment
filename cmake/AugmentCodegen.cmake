@@ -81,6 +81,10 @@ function(augment_codegen_target)
             "${CMAKE_CURRENT_BINARY_DIR}/augment_generated")
     endif()
 
+    if(NOT ACG_INCLUDE_ROOT)
+        set(ACG_INCLUDE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+
     set(_codegen_target "${ACG_TARGET}_codegen")
 
     # -- Build walker command-line --
@@ -88,6 +92,7 @@ function(augment_codegen_target)
         "${Python3_EXECUTABLE}"
         "${AUGMENT_WALKER_SCRIPT}"
         "--output-dir" "${ACG_OUTPUT_DIR}"
+        "--include-root" "${ACG_INCLUDE_ROOT}"
     )
 
     if(ACG_SYMBOL_PREFIX)

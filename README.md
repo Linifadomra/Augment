@@ -13,21 +13,19 @@ The core philosophy: hook in any function at runtime with before/after/replace s
 
 ## Architecture
 
-Overview:
-
 ```
-Mixin.Before("Foo::bar",fn)
+augment_register("Foo::bar", BEFORE, fn)
 ↓
-MixinRegistry     ← one chain per hooked symbol, created lazily
+Registry          ← one chain per hooked symbol, created lazily
 ↓
-ctx struct        ← contract between C++ and hook: args, self, return value
+AugmentCtx        ← contract between C++ and hook: args, self, return value
 ↓
-Trampoline        ← NOP sled patched on first mixin() call
+Trampoline        ← patched on first augment() call via Dobby
 ↓
 Original function ← vanilla C++, zero framework knowledge
 ```
 
-**Foreign language consumers** get an additional layer beneath the registry. Instead of providing a native function pointer directly, they use the FFI path:
+**Foreign language consumers (Lua, Python, etc.)** can use an additional FFI path beneath the registry:
 ```
 augment_make_closure("Foo::bar")
 ↓
@@ -37,7 +35,30 @@ closure_handler    ← bridges into augment_before / augment_after with a normal
 ↓
 MixinRegistry      ← same chain as above, symbol lookup by name
 ```
-The signature for the closure is loaded from a `symbols.json` artifact generated at build time by the tools pipeline. Field offsets for struct access come from the same pipeline via. DWARF extraction. This behavior is entirely optional and disabled by default for consumers who only require C++. If you require this behavior, see [our building instructions](#building). A full usage example can be found in our game agnostic C++ modloader library, [Petrichor](https://github.com/Linifadomra/Augment/tree/main/tools). In-depth documentation will come at a later date.
+
+## Symbol Resolution
+
+Augment supports two first-class resolution paths depending on your build setup:
+
+### Manifest Path
+> [!NOTE] Best suited for shipping titles where full build artifacts are available.
+
+* C++ source + DWARF → build-time pipeline → binary manifest artifact
+* Loaded at runtime via augment_manifest_load(path)
+* Provides full type info, field offsets, RVA lookup, and ASLR slide compensation
+* Can resolve non-exported internal symbols
+* resolve_target uses manifest RVA + image_slide() as primary, falls back to plat::sym_resolve
+
+### LibClang Walker Path
+> [!NOTE] Best suited for mod tooling or environments without a full manifest.
+
+* walk.py analyzes C++ source at build time via LibClang
+* Emits `symbols.json` artifact containing stable mangled symbol names and address offsets
+* Emits generated ctx_ objects and trampolines
+* Runtime resolution via plat::sym_resolve against exported symbols
+* augment_resolve is the primary API here
+* More limited than the manifest path but requires no binary artifact at runtime
+
 
 ## Library Structure
 
