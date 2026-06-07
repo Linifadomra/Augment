@@ -59,15 +59,22 @@ jobs:
       # -------------------------
       # vcpkg (Windows)
       # -------------------------
-      - name: Setup vcpkg
+      - name: Clone vcpkg
         if: runner.os == 'Windows'
-        uses: lukka/run-vcpkg@v11
-
-      - name: Install vcpkg dependencies
-        if: runner.os == 'Windows'
-        shell: pwsh
         run: |
-          vcpkg install libffi:x64-windows
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+
+      - name: Bootstrap vcpkg
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          C:\vcpkg\bootstrap-vcpkg.bat
+
+      - name: Install dependencies
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          C:\vcpkg\vcpkg.exe install libffi:x64-windows
 
       # -------------------------
       # Configure (Windows)
@@ -79,7 +86,7 @@ jobs:
           -G "Visual Studio 17 2022"
           -A x64
           -DAUGMENT_TESTS=ON
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
           -DVCPKG_TARGET_TRIPLET=x64-windows
 
       # -------------------------
