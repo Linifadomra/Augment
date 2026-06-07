@@ -1,20 +1,27 @@
 #include "augment/augment.hpp"
+#include "augment/platform_compat.hpp"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 
 struct Vec3 { float x, y, z; };
 
-extern "C" __attribute__((noinline, visibility("default")))
-float abitest_scale(float a, int n) { volatile float r = a * (float)n; return r; }
+extern "C" AUGMENT_NOINLINE AUGMENT_EXPORT float abitest_scale(float a, int n) { 
+    volatile float r = a * (float)n; 
+    return r; 
+}
 
-extern "C" __attribute__((noinline, visibility("default")))
-Vec3 abitest_make(Vec3 base, float k) { return { base.x + k, base.y + k, base.z + k }; }
+AUGMENT_NOINLINE AUGMENT_EXPORT Vec3 abitest_make(Vec3 base, float k) { 
+    return { base.x + k, base.y + k, base.z + k }; 
+}
 
 struct Obj {
     int life;
-    __attribute__((noinline, visibility("default")))
-    int hit(int dmg) { volatile int r = life - dmg; return r; }
+    AUGMENT_NOINLINE AUGMENT_EXPORT
+    int hit(int dmg) { 
+        volatile int r = life - dmg; 
+        return r; 
+    }
 };
 
 static void before_scale(AugmentCtx* ctx, void*) {

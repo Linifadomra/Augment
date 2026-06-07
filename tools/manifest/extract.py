@@ -40,13 +40,27 @@ def assemble(text, demangle=None):
 
 def main():
     binpath, outpath = sys.argv[1], sys.argv[2]
-    if not DWARFDUMP:
-        sys.exit("extract: requires llvm-dwarfdump")
-    if not CXXFILT:
-        sys.exit("extract: requires llvm-cxxfilt or c++filt")
-    text = subprocess.run([DWARFDUMP, "--debug-info", binpath],
-                          capture_output=True, text=True, encoding="utf-8").stdout
-    m = assemble(text)
+    is_pdb = binpath.lower().endswith('.pdb')
+
+
+    if is_pdb:
+        if not PDBUTIL:
+            sys.exit("extract: requires llvm-pdbutil to process PDB files on Windows")
+            
+        import pdb_parser
+        
+        text = subprocess.run([PDBUTIL, "dump", "-types", "-symbols", "-publics", binpath],
+                             capture_output=True, text=True, encoding="utf-8", errors="ignore").stdout
+        m = pdb_parser.assemble_pdb(text)
+    else:
+        if not DWARFDUMP:
+            sys.exit("extract: requires llvm-dwarfdump")
+        if not CXXFILT:
+            sys.exit("extract: requires llvm-cxxfilt or c++filt")
+        text = subprocess.run([DWARFDUMP, "--debug-info", binpath],
+                            capture_output=True, text=True, encoding="utf-8").stdout
+        m = assemble(text)
+       
     if not m["functions"]:
         sys.exit(f"extract: no DWARF functions in {binpath}; build with -g")
     with open(outpath, "w") as f:

@@ -60,7 +60,7 @@ function(augment_codegen_target)
     cmake_parse_arguments(
         ACG                         # prefix
         "JSON_ONLY"                 # options (flags)
-        "TARGET;OUTPUT_DIR;SYMBOL_PREFIX"   # one-value keywords
+        "TARGET;OUTPUT_DIR;SYMBOL_PREFIX;INCLUDE_ROOT"   # one-value keywords
         "HEADERS;CLANG_ARGS"        # multi-value keywords
         ${ARGN}
     )

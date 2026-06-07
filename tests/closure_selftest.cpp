@@ -3,7 +3,7 @@
 
 #include <cstdio>
 
-extern "C" AUGMENT_EXPORT int augment_dyntest(int a, float b) {
+extern "C" AUGMENT_EXPORT AUGMENT_NOINLINE int augment_dyntest(int a, float b) {
     volatile int   x = a;
     volatile float y = b;
     return x + (int)y;
