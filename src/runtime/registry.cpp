@@ -272,7 +272,15 @@ void augment_unregister(const char* augment_id) {
 }
 
 void augment_install_all(void) {
+    if (!augment::plat::self_test()) {
+        std::fprintf(stderr, "[augment] self-test FAILED: hooks will not fire\n");
+        return;
+    }
     augment::Registry::instance().install_all();
+}
+
+int augment_self_test(void) {
+    return augment::plat::self_test() ? 1 : 0;
 }
 
 void augment_clear(void) {
