@@ -59,11 +59,6 @@ jobs:
       # -------------------------
       # vcpkg (Windows)
       # -------------------------
-      - name: Clone vcpkg
-        if: runner.os == 'Windows'
-        run: |
-          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
-
       - name: Bootstrap vcpkg
         if: runner.os == 'Windows'
         shell: cmd
