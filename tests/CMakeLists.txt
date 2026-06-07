@@ -22,7 +22,7 @@ add_test(NAME registry COMMAND test_registry)
 add_executable(platform_selftest platform_selftest.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/sym_resolve.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/hook_backend.cpp)
-target_link_libraries(platform_selftest PRIVATE dobby)
+target_link_libraries(platform_selftest PRIVATE augment)
 target_include_directories(platform_selftest PRIVATE 
 ${CMAKE_CURRENT_SOURCE_DIR}/../src
 ${CMAKE_CURRENT_SOURCE_DIR}/../include
@@ -30,12 +30,12 @@ ${CMAKE_CURRENT_SOURCE_DIR}/../include
 add_test(NAME platform COMMAND platform_selftest)
 
 add_executable(mixin_selftest mixin_selftest.cpp)
-target_link_libraries(mixin_selftest PRIVATE augment::augment dobby)
+target_link_libraries(mixin_selftest PRIVATE augment::augment)
 add_test(NAME mixin COMMAND mixin_selftest)
 
 if(AUGMENT_FFI)
     add_executable(closure_selftest closure_selftest.cpp)
-    target_link_libraries(closure_selftest PRIVATE augment::augment dobby ffi)
+    target_link_libraries(closure_selftest PRIVATE augment::augment ffi)
     add_test(NAME closure COMMAND closure_selftest)
 endif()
 
@@ -68,6 +68,6 @@ target_link_libraries(mem_test PRIVATE augment::augment)
 add_test(NAME mem COMMAND mem_test)
 if(AUGMENT_FFI)
     add_executable(abi_selftest abi_selftest.cpp)
-    target_link_libraries(abi_selftest PRIVATE augment::augment dobby ffi)
+    target_link_libraries(abi_selftest PRIVATE augment::augment ffi)
     add_test(NAME abi COMMAND abi_selftest)
 endif()

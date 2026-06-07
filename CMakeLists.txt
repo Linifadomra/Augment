@@ -16,7 +16,10 @@ option(AUGMENT_USE_FETCHCONTENT "Build Augment using FetchContent"  ON )
 option(AUGMENT_FFI              "Build libffi closure/call support" ON )
 
 # == DEPENDENCIES ==
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/dobby.cmake)
+set(DOBBY_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(DOBBY_BUILD_STATIC ON CACHE BOOL "" FORCE)
+
+add_subdirectory(vendor/dobby EXCLUDE_FROM_ALL)
 if(AUGMENT_FFI)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/libffi.cmake)
 endif()
@@ -54,7 +57,7 @@ target_include_directories(augment
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_link_libraries(augment PRIVATE dobby)
+target_link_libraries(augment PUBLIC dobby_static)
 
 if(AUGMENT_FFI)
     target_link_libraries(augment PUBLIC ffi)
