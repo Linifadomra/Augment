@@ -14,7 +14,7 @@ target_link_libraries(test_conflicts PRIVATE augment)
 target_include_directories(test_conflicts PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 add_test(NAME conflict COMMAND test_conflicts)
 
-add_executable(test_registry test_registry.cpp platform_stub.cpp)
+add_executable(test_registry test_registry.cpp)
 target_link_libraries(test_registry PRIVATE augment)
 target_include_directories(test_registry PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 add_test(NAME registry COMMAND test_registry)
