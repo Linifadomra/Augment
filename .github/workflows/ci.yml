@@ -43,23 +43,54 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm clang libclang-dev
+          sudo apt-get install -y llvm clang libclang-dev libffi-dev
 
       - name: Install LLVM / libclang (macOS)
         if: runner.os == 'macOS'
         run: |
           brew install llvm
+          brew install libffi
 
-      - name: Install LLVM / libclang (Windows)
+      - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
         run: |
           choco install llvm -y
 
       # -------------------------
-      # Configure CMake
+      # vcpkg (Windows)
       # -------------------------
-      - name: Configure CMake
-        run: cmake -B build -DAUGMENT_TESTS=ON -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+      - name: Setup vcpkg
+        if: runner.os == 'Windows'
+        uses: lukka/run-vcpkg@v11
+
+      - name: Install vcpkg dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install libffi:x64-windows
+
+      # -------------------------
+      # Configure (Windows)
+      # -------------------------
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          cmake -B build
+          -G "Visual Studio 17 2022"
+          -A x64
+          -DAUGMENT_TESTS=ON
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      # -------------------------
+      # Configure (Linux/macOS)
+      # -------------------------
+      - name: Configure CMake (Unix)
+        if: runner.os != 'Windows'
+        run: >
+          cmake -B build
+          -DAUGMENT_TESTS=ON
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       # -------------------------
       # Build
