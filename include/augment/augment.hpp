@@ -59,6 +59,9 @@ typedef struct AugmentRegOpts {
 
 /* API */
 
+using AugmentLogFn = void(*)(const char* tag, const char* msg);
+AUGMENT_API void augment_set_logger(AugmentLogFn fn);
+
 AUGMENT_API void augment_invoke(const char* symbol, AugmentCtx* ctx);
 AUGMENT_API void* augment_before(const char* symbol, AugmentCtx* ctx);
 AUGMENT_API void augment_after(const char* symbol, AugmentCtx* ctx);
