@@ -24,6 +24,7 @@ namespace augment::plat {
     bool hook_install  (void* target, void* replacement, void** out_original);
     bool hook_remove   (void* target);
     void* sym_resolve  (const char* symbol);
+    bool self_test     (void);
     intptr_t image_slide();
 }
 
