@@ -90,6 +90,7 @@ void closure_handler(ffi_cif* cif, void* ret, void** args, void* user) {
     ctx.ret       = ret;
     ctx.cancelled = 0;
     ctx.user      = nullptr;
+    ctx.arg_count = (int)c->atypes.size() - (c->is_member ? 1 : 0);
 
     void* orig = augment_before(c->symbol.c_str(), &ctx);
     if (orig)

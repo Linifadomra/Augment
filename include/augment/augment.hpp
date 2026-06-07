@@ -39,6 +39,7 @@ typedef struct AugmentCtx {
     void*    ret;       // return value slot
     int      cancelled; // set nonzero in before to skip original
     void*    user;      // internal, do not touch
+    int      arg_count; // number of arguments
 } AugmentCtx;
 
 typedef void (*AugmentFn)(AugmentCtx* ctx, void* userdata);
