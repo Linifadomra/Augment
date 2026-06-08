@@ -174,17 +174,29 @@ def main():
     ap.add_argument("input")
     ap.add_argument("output")
     ap.add_argument("--exclude-file", default=None)
+    ap.add_argument("--exclude-prefix-file", default=None)
     args = ap.parse_args()
 
     with open(args.input) as f:
         manifest = json.load(f)
 
+    excluded = set()
     if args.exclude_file:
         with open(args.exclude_file) as f:
             excluded = {l.strip() for l in f if l.strip()}
+
+    prefixes = []
+    if args.exclude_prefix_file:
+        with open(args.exclude_prefix_file) as f:
+            prefixes = [l.strip() for l in f if l.strip()]
+
+    if excluded or prefixes:
         manifest["functions"] = [
             fn for fn in manifest.get("functions", [])
-            if fn["flat"] not in excluded and fn["mangled"] not in excluded
+            if fn["flat"] not in excluded
+            and fn["mangled"] not in excluded
+            and not any(fn["flat"].startswith(p) for p in prefixes)
+            and not any(fn["mangled"].startswith(p) for p in prefixes)
         ]
 
     with open(args.output, "wb") as f:
