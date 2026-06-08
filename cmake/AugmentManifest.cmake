@@ -54,6 +54,14 @@ function(augment_manifest)
             COMMAND ${Python3_EXECUTABLE} ${AUGMENT_EXTRACT_SCRIPT} ${_dbg} ${AM_JSON}
             COMMAND ${_pack_cmd}
             VERBATIM)
+    elseif(WIN32 AND MSVC)
+        add_custom_command(TARGET ${AM_TARGET} POST_BUILD
+            COMMAND ${Python3_EXECUTABLE}
+                ${AUGMENT_EXTRACT_SCRIPT}
+                "$<TARGET_PDB_FILE:${AM_TARGET}>"
+                ${AM_JSON}
+            COMMAND ${_pack_cmd}
+            VERBATIM)       
     else()
         add_custom_command(TARGET ${AM_TARGET} POST_BUILD
             COMMAND ${Python3_EXECUTABLE} ${AUGMENT_EXTRACT_SCRIPT} $<TARGET_FILE:${AM_TARGET}> ${AM_JSON}
