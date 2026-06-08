@@ -9,6 +9,7 @@ endif()
 
 function(augment_manifest)
     cmake_parse_arguments(AM "" "TARGET;OUTPUT;JSON" "EXCLUDE;EXCLUDE_PREFIX" ${ARGN})
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
     if(NOT AM_TARGET OR NOT AM_OUTPUT)
         message(FATAL_ERROR "augment_manifest: TARGET and OUTPUT are required")
