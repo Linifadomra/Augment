@@ -16,14 +16,33 @@
 #include "runtime/registry.hpp"
 #include "runtime/conflict.hpp"
 #include "augment/manifest_internal.hpp"
+#include "augment/augment.hpp"
 
+#include <cstdarg>
 #include <mutex>
 #include <cstdio>
+
+static AugmentLogFn s_logger = nullptr;
+
+void augment_set_logger(AugmentLogFn fn) {
+    s_logger = fn;
+}
+
+static void augment_log(const char* tag, const char* fmt, ...) {
+    char buf[512];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    if (s_logger) s_logger(tag, buf);
+    else fprintf(stderr, "[%s] %s\n", tag, buf);
+}
 
 namespace augment::plat {
     bool hook_install  (void* target, void* replacement, void** out_original);
     bool hook_remove   (void* target);
     void* sym_resolve  (const char* symbol);
+    bool self_test     (void);
     intptr_t image_slide();
 }
 
@@ -77,16 +96,14 @@ bool Registry::register_augment(const char* symbol, AugmentPhase phase,
     ConflictResult cr = conflict_check(*chain, e);
 
     if (cr.cls == ConflictClass::Hard) {
-        std::fprintf(stderr,
-            "[augment] CONFLICT (class 3) augment='%s' symbol='%s': %s\n",
-            e.augment_id.c_str(), symbol, cr.reason);
+        augment_log("augment", "CONFLICT (class 3) augment='%s' symbol='%s': %s",
+                    e.augment_id.c_str(), symbol, cr.reason);
         return false;
     }
 
     if (cr.cls == ConflictClass::Order) {
-        std::fprintf(stderr,
-            "[augment] WARNING (class 2) augment='%s' symbol='%s': %s\n",
-            e.augment_id.c_str(), symbol, cr.reason);
+        augment_log("augment", "WARNING (class 2) augment='%s' symbol='%s': %s",
+                    e.augment_id.c_str(), symbol, cr.reason);
     }
 
     chain->add(e);
@@ -114,22 +131,19 @@ void* Registry::resolve_target(const std::string& symbol) {
 bool Registry::install_chain(const std::string& symbol, Chain& chain) {
     void* repl = chain.target_ptr ? chain.target_ptr : augment_make_closure(symbol.c_str());
     if (!repl) {
-        std::fprintf(stderr,
-            "[augment] no trampoline or signature for '%s' (not in manifest?)\n", symbol.c_str());
+        augment_log("augment", "no trampoline or signature for '%s' (not in manifest?)", symbol.c_str());
         return false;
     }
 
     void* target = resolve_target(symbol);
     if (!target) {
-        std::fprintf(stderr,
-            "[augment] sym_resolve failed for '%s'\n", symbol.c_str());
+        augment_log("augment", "sym_resolve failed for '%s'. (function inlined?)", symbol.c_str());
         return false;
     }
 
     void* orig = nullptr;
     if (!plat::hook_install(target, repl, &orig)) {
-        std::fprintf(stderr,
-            "[augment] hook_install failed for '%s'\n", symbol.c_str());
+        augment_log("augment", "hook_install failed for '%s'", symbol.c_str());
         return false;
     }
 
@@ -272,7 +286,15 @@ void augment_unregister(const char* augment_id) {
 }
 
 void augment_install_all(void) {
+    if (!augment::plat::self_test()) {
+        augment_log("augment", "self-test FAILED: hooks will not fire");
+        return;
+    }
     augment::Registry::instance().install_all();
+}
+
+int augment_self_test(void) {
+    return augment::plat::self_test() ? 1 : 0;
 }
 
 void augment_clear(void) {

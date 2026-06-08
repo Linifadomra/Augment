@@ -30,4 +30,25 @@ bool hook_remove(void* target) {
     return target && DobbyDestroy(target) == 0;
 }
 
+#if defined(_MSC_VER)
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+static int selftest_target(int x) { return x + 1; }
+static int (*selftest_orig)(int) = nullptr;
+static int selftest_replacement(int x) { return selftest_orig(x) + 100; }
+
+bool self_test(void) {
+    volatile int arg = 5;
+    int before = selftest_target(arg);
+    void* out = nullptr;
+    if (!hook_install((void*)selftest_target, (void*)selftest_replacement, &out)) return false;
+    selftest_orig = (int(*)(int))out;
+    int hooked = selftest_target(arg);
+    hook_remove((void*)selftest_target);
+    int restored = selftest_target(arg);
+    return hooked == before + 100 && restored == before;
+}
+
 } // namespace augment::plat

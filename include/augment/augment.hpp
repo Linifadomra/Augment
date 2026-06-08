@@ -39,6 +39,7 @@ typedef struct AugmentCtx {
     void*    ret;       // return value slot
     int      cancelled; // set nonzero in before to skip original
     void*    user;      // internal, do not touch
+    int      arg_count; // number of arguments
 } AugmentCtx;
 
 typedef void (*AugmentFn)(AugmentCtx* ctx, void* userdata);
@@ -57,6 +58,9 @@ typedef struct AugmentRegOpts {
 } AugmentRegOpts;
 
 /* API */
+
+using AugmentLogFn = void(*)(const char* tag, const char* msg);
+AUGMENT_API void augment_set_logger(AugmentLogFn fn);
 
 AUGMENT_API void augment_invoke(const char* symbol, AugmentCtx* ctx);
 AUGMENT_API void* augment_before(const char* symbol, AugmentCtx* ctx);
@@ -79,6 +83,7 @@ AUGMENT_API void augment_install_all(void);
 AUGMENT_API void augment_clear(void);
 AUGMENT_API const char* augment_inspect(const char* symbol);
 AUGMENT_API void* augment_resolve(const char* symbol);
+AUGMENT_API int augment_self_test(void);
 
 #if AUGMENT_FFI
 AUGMENT_API void augment_register_signature(const char* symbol, int is_member,
