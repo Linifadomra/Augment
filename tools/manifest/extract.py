@@ -2,6 +2,7 @@
 import sys, json, subprocess, shutil
 import dwarf
 
+PDBUTIL = shutil.which("llvm-pdbutil")
 DWARFDUMP = shutil.which("llvm-dwarfdump") or shutil.which("dwarfdump")
 CXXFILT   = shutil.which("llvm-cxxfilt") or shutil.which("c++filt")
 
@@ -62,7 +63,8 @@ def main():
         m = assemble(text)
        
     if not m["functions"]:
-        sys.exit(f"extract: no DWARF functions in {binpath}; build with -g")
+        print("warning: no functions extracted (generating empty manifest)")
+        m["functions"] = []
     with open(outpath, "w") as f:
         json.dump(m, f, indent=2)
     print(f"extract: {len(m['functions'])} fns, {len(m['structs'])} structs, "

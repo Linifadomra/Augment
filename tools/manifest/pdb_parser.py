@@ -16,10 +16,13 @@ _SYM_RECORD_RE = re.compile(r'^\s*(\d+|0x[0-9a-fA-F]+)\s*\|\s*(S_GPROC32|S_LPROC
 _SYM_TYPE_RE = re.compile(r'type\s*=\s*(0x[0-9a-fA-F]+)\s*(?:\((.+)\))?')
 _SYM_ADDR_RE = re.compile(r'addr\s*=\s*([0-9a-fA-F]+):([0-9a-fA-F]+)')
 
+_SEC_NUM_RE = re.compile(r'SECTION HEADER #(\d+)')
+_SEC_VA_RE  = re.compile(r'([0-9a-fA-F]+)\s+virtual address')
+
 _PRIM = {
     "void": "void", "bool": "u8", "char": "i8", "signed char": "i8", "unsigned char": "u8",
     "short": "i16", "short int": "i16", "unsigned short": "u16", "short unsigned int": "u16",
-    "int": "i32", "unsigned int": "u32", "long": "i32", "unsigned long": "u32", 
+    "int": "i32", "unsigned int": "u32", "long": "i32", "unsigned long": "u32",
     "long long": "i64", "long long int": "i64", "unsigned long long": "u64",
     "float": "f32", "double": "f64", "long double": "f64", "wchar_t": "i16",
     "__int8": "i8", "unsigned __int8": "u8", "__int16": "i16", "unsigned __int16": "u16",
@@ -53,6 +56,32 @@ def pointee_struct(t):
 def _flat(qualified):
     return qualified.split("(")[0].strip().replace("::", "_").replace(" ", "")
 
+def parse_section_headers(text):
+    sections = {}
+    current_seg = None
+    for line in text.splitlines():
+        m = _SEC_NUM_RE.search(line)
+        if m:
+            current_seg = int(m.group(1))
+            continue
+        if current_seg is not None:
+            m = _SEC_VA_RE.search(line)
+            if m:
+                sections[current_seg] = int(m.group(1), 16)
+    return sections
+
+
+def _resolve_rva(seg_str, off_str, section_map):
+    try:
+        seg = int(seg_str, 16)
+        off = int(off_str, 16)
+    except (ValueError, TypeError):
+        return None
+    if not off:          # null / unresolved symbol
+        return None
+    if section_map and seg in section_map:
+        return hex(section_map[seg] + off)
+    return hex(off)      # degraded fallback — correct only for single-section images
 class PdbType:
     __slots__ = ("kind", "name", "fields", "enum_values", "args", "byte_size", "field_list_id", "return_type_name", "class_type_id")
     def __init__(self, kind, name=""):
@@ -89,8 +118,11 @@ def parse_pdb_dump(text):
             current_type = None  # Clear context
             sym_kind, sym_name = m_sym.group(2), m_sym.group(3) or ""
             current_sym = {
-                "kind": sym_kind, "name": sym_name,
-                "type_id": None, "type_name": "", "rva": None
+                "kind":      sym_kind,
+                "name":      sym_name,
+                "type_id":   None,
+                "type_name": "",
+                "_addr":     None,
             }
             if sym_kind in ("S_GPROC32", "S_LPROC32"):
                 functions.append(current_sym)
@@ -100,7 +132,7 @@ def parse_pdb_dump(text):
                 typedefs.append(current_sym)
             continue
 
-        if current_type:
+        if current_type is not None:
             fl_m = _FIELD_LIST_RE.search(line)
             if fl_m: current_type.field_list_id = fl_m.group(1)
             
@@ -134,7 +166,7 @@ def parse_pdb_dump(text):
                 if arg_m:
                     current_type.args.append({"type_id": arg_m.group(1), "type_name": arg_m.group(2)})
 
-        elif current_sym:
+        elif current_sym is not None:
             t_m = _SYM_TYPE_RE.search(line)
             if t_m:
                 current_sym["type_id"] = t_m.group(1)
@@ -142,9 +174,69 @@ def parse_pdb_dump(text):
             
             addr_m = _SYM_ADDR_RE.search(line)
             if addr_m:
-                current_sym["rva"] = f"0x{addr_m.group(1)}:{addr_m.group(2)}"
+                current_sym["_addr"] = (addr_m.group(1), addr_m.group(2))
 
     return types_db, functions, globals_list, typedefs
+
+def _named_count(f):
+    return len(f.get("args", []))
+
+
+def extract_functions(functions_raw, types_db, struct_names, section_map):
+    out = []
+    for fn in functions_raw:
+        qname    = fn["name"]
+        ret      = "void"
+        member   = False
+        self_view = None
+        args     = []
+
+        tid = fn["type_id"]
+        if tid and tid in types_db:
+            t_rec = types_db[tid]
+            ret = ffi_kind(t_rec.return_type_name)[0]
+
+            if t_rec.kind == "LF_MFUNCTION":
+                member = True
+                if t_rec.class_type_id and t_rec.class_type_id in types_db:
+                    self_view = types_db[t_rec.class_type_id].name
+
+            if t_rec.field_list_id and t_rec.field_list_id in types_db:
+                for i, arg_item in enumerate(types_db[t_rec.field_list_id].args):
+                    t_name = arg_item["type_name"]
+                    kind_str, _ = ffi_kind(t_name)
+                    arg_dict = {"name": f"arg{i}", "kind": kind_str}
+                    view = pointee_struct(t_name)
+                    if view:
+                        arg_dict["view"] = view
+                    args.append(arg_dict)
+
+        addr = fn.get("_addr")
+        rva  = _resolve_rva(*addr, section_map) if addr else None
+
+        out.append({
+            "flat":      _flat(qname),
+            "mangled":   qname,
+            "member":    member,
+            "self_view": self_view,
+            "rva":       rva,
+            "loc":       None,
+            "ret":       ret,
+            "args":      args,
+        })
+
+    best = {}
+    for f in out:
+        key = f["mangled"]
+        cur = best.get(key)
+        if cur is None:
+            best[key] = f
+        elif f["rva"] is not None and cur["rva"] is None:
+            best[key] = f
+        elif (f["rva"] is not None) == (cur["rva"] is not None) and _named_count(f) > _named_count(cur):
+            best[key] = f
+    return list(best.values())
+
 
 def extract_structs(types_db):
     out = []
@@ -172,44 +264,27 @@ def extract_enums(types_db):
                     values.append({"name": ev["name"], "value": ev["value"]})
             owner = "::".join(t.name.split("::")[:-1]) if "::" in t.name else None
             out.append({"name": t.name, "owner": owner, "values": values})
-    return out
 
-def extract_functions(functions_raw, types_db, struct_names):
+    best = {}
+    for e in out:
+        cur = best.get(e["name"])
+        if cur is None or len(e["values"]) > len(cur["values"]):
+            best[e["name"]] = e
+    return list(best.values())
+
+
+def extract_globals(globals_raw, section_map):
     out = []
-    for fn in functions_raw:
-        qname = fn["name"]
-        ret = "void"
-        member = False
-        self_view = None
-        args = []
-        
-        tid = fn["type_id"]
-        if tid and tid in types_db:
-            t_rec = types_db[tid]
-            ret = ffi_kind(t_rec.return_type_name)[0]
-            if t_rec.kind == "LF_MFUNCTION":
-                member = True
-                if t_rec.class_type_id and t_rec.class_type_id in types_db:
-                    self_view = types_db[t_rec.class_type_id].name
-            
-            if t_rec.field_list_id and t_rec.field_list_id in types_db:
-                for i, arg_item in enumerate(types_db[t_rec.field_list_id].args):
-                    t_name = arg_item["type_name"]
-                    kind_str, _ = ffi_kind(t_name)
-                    arg_dict = {"name": f"arg{i}", "kind": kind_str}
-                    view = pointee_struct(t_name)
-                    if view: arg_dict["view"] = view
-                    args.append(arg_dict)
-                    
+    for g in globals_raw:
+        addr = g.get("_addr")
+        rva  = _resolve_rva(*addr, section_map) if addr else None
         out.append({
-            "flat": _flat(qname), "mangled": qname, "member": member,
-            "self_view": self_view, "rva": fn["rva"], "loc": None,
-            "ret": ret, "args": args
+            "name": g["name"],
+            "kind": ffi_kind(g.get("type_name", ""))[0],
+            "addr": rva,
         })
     return out
 
-def extract_globals(globals_raw):
-    return [{"name": g["name"], "kind": ffi_kind(g["type_name"])[0], "addr": g["rva"]} for g in globals_raw]
 
 def extract_typedefs(typedefs_raw):
     seen = set()
@@ -221,12 +296,13 @@ def extract_typedefs(typedefs_raw):
     return out
 
 def assemble_pdb(text):
+    section_map = parse_section_headers(text)
     types_db, functions_raw, globals_raw, typedefs_raw = parse_pdb_dump(text)
     
     structs = extract_structs(types_db)
     struct_names = {s["name"] for s in structs}
     
-    functions = extract_functions(functions_raw, types_db, struct_names)
+    functions = extract_functions(functions_raw, types_db, struct_names, section_map)
     functions.sort(key=lambda f: (f["flat"], f["mangled"]))
     
     return {
@@ -234,6 +310,6 @@ def assemble_pdb(text):
         "functions": functions,
         "structs": sorted(structs, key=lambda s: s["name"]),
         "enums": sorted(extract_enums(types_db), key=lambda e: e["name"]),
-        "globals": sorted(extract_globals(globals_raw), key=lambda g: g["name"]),
+        "globals": sorted(extract_globals(globals_raw, section_map), key=lambda g: g["name"]),
         "typedefs": sorted(extract_typedefs(typedefs_raw), key=lambda t: t["alias"])
     }
