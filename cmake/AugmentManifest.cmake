@@ -8,7 +8,7 @@ if(NOT DEFINED AUGMENT_PACK_SCRIPT)
 endif()
 
 function(augment_manifest)
-    cmake_parse_arguments(AM "" "TARGET;OUTPUT;JSON" "EXCLUDE;EXCLUDE_PREFIX" ${ARGN})
+    cmake_parse_arguments(AM "SEPARATE_TARGET" "TARGET;OUTPUT;JSON" "EXCLUDE;EXCLUDE_PREFIX" ${ARGN})
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
     if(NOT AM_TARGET OR NOT AM_OUTPUT)
@@ -49,25 +49,65 @@ function(augment_manifest)
         message(WARNING "augment_manifest: PDB extractor not implemented yet; ${AM_OUTPUT} not produced (must emit manifest.json schema v2)")
         return()
     endif()
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
     target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:-g>)
-    if(APPLE)
-        set(_dbg $<TARGET_FILE:${AM_TARGET}>.dSYM)
-        add_custom_command(TARGET ${AM_TARGET} POST_BUILD
-            COMMAND dsymutil $<TARGET_FILE:${AM_TARGET}> -o ${_dbg}
-            COMMAND ${Python3_EXECUTABLE} ${AUGMENT_EXTRACT_SCRIPT} ${_dbg} ${AM_JSON}
-            COMMAND ${_pack_cmd}
-            VERBATIM)
+    set(_target_bin $<TARGET_FILE:${AM_TARGET}>)
+    if(AM_SEPARATE_TARGET)
+        # --- only runs when explicitly requested ---
+        if(APPLE)
+            set(_dbg "${_target_bin}.dSYM")
+            add_custom_command(
+                OUTPUT  "${AM_OUTPUT}" "${AM_JSON}"
+                COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
+                COMMAND "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
+                        "${_dbg}" "${AM_JSON}"
+                COMMAND ${_pack_cmd}
+                DEPENDS "${_target_bin}"
+                VERBATIM
+            )
+        else()
+            set(_strip_cmd "")
+            if(CMAKE_BUILD_TYPE STREQUAL "Release")
+                set(_strip_cmd COMMAND "${CMAKE_OBJCOPY}" --strip-debug "${_target_bin}")
+            endif()
+            add_custom_command(
+                OUTPUT  "${AM_OUTPUT}" "${AM_JSON}"
+                COMMAND "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
+                        "${_target_bin}" "${AM_JSON}"
+                COMMAND ${_pack_cmd}
+                ${_strip_cmd}
+                DEPENDS "${_target_bin}"
+                VERBATIM
+            )
+        endif()
+        add_custom_target("gen_manifest"
+            DEPENDS "${AM_OUTPUT}"
+        )
+        add_dependencies("gen_manifest" "${AM_TARGET}")
     else()
-        add_custom_command(TARGET ${AM_TARGET} POST_BUILD
-            COMMAND ${Python3_EXECUTABLE} ${AUGMENT_EXTRACT_SCRIPT} $<TARGET_FILE:${AM_TARGET}> ${AM_JSON}
-            COMMAND ${_pack_cmd}
-            VERBATIM)
-        if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        # --- runs automatically on every POST_BUILD ---
+        if(APPLE)
+            set(_dbg "${_target_bin}.dSYM")
             add_custom_command(TARGET ${AM_TARGET} POST_BUILD
-                COMMAND ${CMAKE_OBJCOPY} --strip-debug $<TARGET_FILE:${AM_TARGET}>
-                VERBATIM)
+                COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
+                COMMAND "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
+                        "${_dbg}" "${AM_JSON}"
+                COMMAND ${_pack_cmd}
+                VERBATIM
+            )
+        else()
+            add_custom_command(TARGET ${AM_TARGET} POST_BUILD
+                COMMAND "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
+                        "${_target_bin}" "${AM_JSON}"
+                COMMAND ${_pack_cmd}
+                VERBATIM
+            )
+            if(CMAKE_BUILD_TYPE STREQUAL "Release")
+                add_custom_command(TARGET ${AM_TARGET} POST_BUILD
+                    COMMAND ${CMAKE_OBJCOPY} --strip-debug $<TARGET_FILE:${AM_TARGET}>
+                    VERBATIM
+                )
+            endif()
         endif()
     endif()
 endfunction()
