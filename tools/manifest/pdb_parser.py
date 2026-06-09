@@ -2,10 +2,10 @@
 import re
 
 _RECORD_RE = re.compile(r'^\s*(0x[0-9a-fA-F]+)\s*\|\s*([A-Z0-9_]+)\s+\[size = \d+\](?:\s+`([^`]+)`)?')
-_FIELD_LIST_RE = re.compile(r'field list\s*=\s*(0x[0-9a-fA-F]+)')
-_SIZE_RE = re.compile(r'size\s*=\s*(\d+)')
+_FIELD_LIST_RE = re.compile(r'field list\s*[=:]\s*(0x[0-9a-fA-F]+)')
+_SIZE_RE = re.compile(r'size\s*[=:]\s*(\d+)')
 _RETURN_TYPE_RE = re.compile(r'return type\s*=\s*(0x[0-9a-fA-F]+)\s*\((.+?)\)')
-_CLASS_TYPE_RE = re.compile(r'class type\s*=\s*(0x[0-9a-fA-F]+)')
+_CLASS_TYPE_RE = re.compile(r'class type\s*[=:]\s*(0x[0-9a-fA-F]+)')
 _PARAM_LIST_RE = re.compile(r'(?:param|arg) list\s*=\s*(0x[0-9a-fA-F]+)')
 
 _LF_MEMBER_RE = re.compile(r'^\s*-\s+LF_MEMBER\s+\[name\s*=\s*`([^`]+)`,\s*Type\s*=\s*(0x[0-9a-fA-F]+)\s*\((.+)\),\s*offset\s*=\s*(\d+)')
@@ -218,7 +218,7 @@ def parse_pdb_dump(text):
             pass
             
         elif current_sym is not None:
-            if current_sym.get("kind") in ("S_GPROC32", "S_LPROC32", "S_GPROC32_ID", "S_LPROC32_ID", "S_GDATA32", "S_LDATA32"):
+            if current_sym.get("kind") in ("S_GPROC32", "S_LPROC32", "S_GPROC32_ID", "S_LPROC32_ID", "S_GDATA32", "S_LDATA32", "S_UDT"):
                 t_m = _SYM_TYPE_RE.search(line)
                 if t_m and not current_sym.get("type_id"): 
                     current_sym["type_id"] = t_m.group(1)
@@ -341,20 +341,29 @@ def extract_functions(functions_raw, types_db, struct_names, section_map):
 
 
 def extract_structs(types_db):
-    out = []
-    for t in types_db.values():
-        if t.kind in ("LF_STRUCTURE", "LF_CLASS", "LF_UNION") and t.name:
-            fields = []
+    best = {}
+    
+    for t_id, t in types_db.items():
+        if t.kind in ("LF_STRUCTURE", "LF_CLASS", "LF_UNION"):
             if t.field_list_id and t.field_list_id in types_db:
-                for fld in types_db[t.field_list_id].fields:
-                    k, ln = ffi_kind(fld["type_name"])
-                    f_info = {"name": fld["name"], "offset": fld["offset"], "kind": k}
-                    if ln is not None: f_info["len"] = ln
-                    view = pointee_struct(fld["type_name"])
-                    if view: f_info["view"] = view
-                    fields.append(f_info)
-            out.append({"name": t.name, "size": t.byte_size, "fields": fields})
-    return out
+                best[t.name] = t
+                
+    final_output = []
+    for name, t in best.items():
+        fields = []
+        for fld in types_db[t.field_list_id].fields:
+            k, ln = ffi_kind(fld.get("type_name", ""))
+            f_info = {"name": fld["name"], "offset": fld["offset"], "kind": k}
+            if ln is not None: f_info["len"] = ln
+            fields.append(f_info)
+            
+        final_output.append({
+            "name": name,
+            "size": t.byte_size,
+            "fields": fields
+        })
+                
+    return final_output
 
 def extract_enums(types_db):
     out = []
@@ -388,18 +397,36 @@ def extract_globals(globals_raw, section_map):
     return out
 
 
-def extract_typedefs(typedefs_raw):
+def extract_typedefs(typedefs_raw, types_db):
     seen = set()
     out = []
     for t in typedefs_raw:
-        if t["name"] not in seen:
-            if "type_name" not in t:
-                print(f"Warning: Typedef '{t.get('name', 'UNKNOWN')}' is missing 'type_name'. Skipping.")
+        alias = t.get("name")
+        if not alias or alias in seen:
+            continue
+            
+        t_name = t.get("type_name")
+        
+        if not t_name and t.get("type_id"):
+            t_rec = types_db.get(t["type_id"])
+            if t_rec:
+                if t_rec.name:
+                    t_name = t_rec.name
+                elif t_rec.kind in ("LF_POINTER", "LF_ARRAY"):
+                    t_name = "void*"
+                elif t_rec.kind == "LF_ENUM":
+                    t_name = "int"
+        
+        if not t_name:
+            if t.get("type_id"):
+                t_name = "void*"
+            else:
+                print(f"Warning: Typedef '{alias}' has no type data. Skipping.")
                 continue
-            
-            seen.add(t["name"])
-            out.append({"alias": t["name"], "kind": ffi_kind(t["type_name"])[0]})
-            
+                
+        seen.add(alias)
+        out.append({"alias": alias, "kind": ffi_kind(t_name)[0]})
+        
     return out
 
 def assemble_pdb(text):
@@ -418,5 +445,5 @@ def assemble_pdb(text):
         "structs": sorted(structs, key=lambda s: s["name"]),
         "enums": sorted(extract_enums(types_db), key=lambda e: e["name"]),
         "globals": sorted(extract_globals(globals_raw, section_map), key=lambda g: g["name"]),
-        "typedefs": sorted(extract_typedefs(typedefs_raw), key=lambda t: t["alias"])
+        "typedefs": sorted(extract_typedefs(typedefs_raw, types_db), key=lambda t: t["alias"])
     }
