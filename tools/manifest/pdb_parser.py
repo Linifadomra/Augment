@@ -3,12 +3,13 @@ import re
 
 _RECORD_RE = re.compile(r'^\s*(0x[0-9a-fA-F]+)\s*\|\s*([A-Z0-9_]+)\s+\[size = \d+\](?:\s+`([^`]+)`)?')
 _FIELD_LIST_RE = re.compile(r'field list\s*[=:]\s*(0x[0-9a-fA-F]+)')
-_SIZE_RE = re.compile(r'size\s*[=:]\s*(\d+)')
+_SIZEOF_RE = re.compile(r'sizeof\s+(\d+)')
 _RETURN_TYPE_RE = re.compile(r'return type\s*=\s*(0x[0-9a-fA-F]+)\s*\((.+?)\)')
 _CLASS_TYPE_RE = re.compile(r'class type\s*[=:]\s*(0x[0-9a-fA-F]+)')
 _PARAM_LIST_RE = re.compile(r'(?:param|arg) list\s*=\s*(0x[0-9a-fA-F]+)')
+_REFERENT_RE = re.compile(r'(?:referent(?: type)?|element type|modified type|underlying type)\s*[=:]\s*(0x[0-9a-fA-F]+)')
 
-_LF_MEMBER_RE = re.compile(r'^\s*-\s+LF_MEMBER\s+\[name\s*=\s*`([^`]+)`,\s*Type\s*=\s*(0x[0-9a-fA-F]+)\s*\((.+)\),\s*offset\s*=\s*(\d+)')
+_LF_MEMBER_RE = re.compile(r'^\s*-\s+LF_MEMBER\s+\[name\s*=\s*`([^`]+)`,\s*Type\s*=\s*(0x[0-9a-fA-F]+)(?:\s*\((.+?)\))?,\s*offset\s*=\s*(\d+)')
 _LF_ENUMERATE_RE = re.compile(r'^\s*-\s+LF_ENUMERATE\s+\[name\s*=\s*`([^`]+)`,\s*value\s*=\s*(-?\d+|0x[0-9a-fA-F]+)')
 _ARG_TYPE_RE = re.compile(r'^\s*(?:-\s+ArgType\s*=\s*|<type:\s*)(0x[0-9a-fA-F]+)\s*\(([^)]+)\)')
 
@@ -42,15 +43,61 @@ _PRIM = {
 _CHAR_ARR_RE = re.compile(r"^(?:const\s+|volatile\s+)*(?:signed\s+|unsigned\s+)?char\s*\[(\d+)\]$")
 _IDENT_RE = re.compile(r"^[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*$")
 
-def ffi_kind(t):
-    t = t.strip()
-    m = _CHAR_ARR_RE.match(t)
-    if m:
-        return ("str", int(m.group(1)))
-    if re.search(r"(\b\w+\s*\*\s*|\b\w+\s*&\s*)", t):
-        return ("ptr", None)
-    base = t.replace("const", "").replace("volatile", "").strip()
-    return (_PRIM.get(base, "ptr"), None)
+def ffi_kind(type_name):
+    if not type_name:
+        return "unknown", None
+        
+    type_name = type_name.strip().replace("`", "")
+    
+    if type_name.endswith("]"):
+        match = re.search(r'\[(\d+)\]$', type_name)
+        array_len = int(match.group(1)) if match else None
+        return "array", array_len
+
+    if type_name.endswith("*"):
+        return "ptr", None
+
+    primitive_map = {
+        "void": ("void", None), "char": ("i8", None), "signed char": ("i8", None), "s8": ("i8", None),
+        "unsigned char": ("u8", None), "u8": ("u8", None), "short": ("i16", None), "unsigned short": ("u16", None),
+        "u16": ("u16", None), "int": ("i32", None), "unsigned int": ("u32", None), "unsigned": ("u32", None),
+        "long": ("i32", None), "u32": ("u32", None), "float": ("f32", None), "f32": ("f32", None),
+    }
+    
+    if type_name in primitive_map:
+        return primitive_map[type_name]
+        
+    return "struct", None
+
+def resolve_field_schema(type_name):
+    if not type_name:
+        return {"kind": "ptr"}
+        
+    type_name = type_name.strip().replace("`", "")
+    
+    primitive_map = {
+        "unsigned char": "u8", "u8": "u8",
+        "char": "i8", "signed char": "i8", "s8": "i8",
+        "unsigned short": "u16", "u16": "u16",
+        "short": "i16", "s16": "i16",
+        "unsigned int": "u32", "unsigned": "u32", "u32": "u32",
+        "int": "i32", "s32": "i32",
+        "float": "f32", "f32": "f32"
+    }
+    
+    if type_name in primitive_map:
+        return {"kind": primitive_map[type_name]}
+        
+    if "[" in type_name:
+        return {"kind": "ptr"}
+        
+    if type_name.endswith("*"):
+        base_type = type_name[:-1].strip()
+        if base_type in ("void", "int", "char", "unsigned char", "float"):
+            return {"kind": "ptr"}
+        return {"kind": "ptr", "view": base_type}
+        
+    return {"kind": "ptr"}
 
 def pointee_struct(t):
     t = t.strip()
@@ -78,7 +125,6 @@ def parse_section_headers(text):
                 sections[current_seg] = int(m.group(1), 16)
     return sections
 
-
 def _resolve_rva(seg_str, off_str, section_map):
     if seg_str is None or off_str is None:
         return None
@@ -97,8 +143,10 @@ def _resolve_rva(seg_str, off_str, section_map):
         return None
 
     return f"0x{base + off:x}"
+
 class PdbType:
-    __slots__ = ("kind", "name", "fields", "enum_values", "args", "byte_size", "field_list_id", "return_type_name", "class_type_id", "inline_type_id")
+    __slots__ = ("kind", "name", "fields", "enum_values", "args", "byte_size", 
+                 "field_list_id", "return_type_name", "class_type_id", "inline_type_id", "referent_id")
     def __init__(self, kind, name=""):
         self.kind = kind
         self.name = name
@@ -110,6 +158,7 @@ class PdbType:
         self.return_type_name = "void"
         self.class_type_id = None
         self.inline_type_id = None
+        self.referent_id = None
 
 def parse_pdb_dump(text):
     types_db = {}
@@ -178,12 +227,13 @@ def parse_pdb_dump(text):
             continue
 
         if current_type is not None:
-            fl_m = _FIELD_LIST_RE.search(line)
-            if fl_m: current_type.field_list_id = fl_m.group(1)
-            
-            sz_m = _SIZE_RE.search(line)
+            sz_m = _SIZEOF_RE.search(line)
             if sz_m and current_type.kind in ("LF_STRUCTURE", "LF_CLASS", "LF_UNION"):
                 current_type.byte_size = int(sz_m.group(1))
+
+            fl_m = _FIELD_LIST_RE.search(line)
+            if fl_m and current_type.kind in ("LF_STRUCTURE", "LF_CLASS", "LF_UNION"):
+                current_type.field_list_id = fl_m.group(1)
                 
             ret_m = _RETURN_TYPE_RE.search(line)
             if ret_m: current_type.return_type_name = ret_m.group(2)
@@ -193,6 +243,10 @@ def parse_pdb_dump(text):
                 
             p_m = _PARAM_LIST_RE.search(line)
             if p_m: current_type.field_list_id = p_m.group(1)
+
+            ref_m = _REFERENT_RE.search(line)
+            if ref_m:
+                current_type.referent_id = ref_m.group(1)
 
             if current_type.kind in ("LF_FUNC_ID", "LF_MFUNC_ID"):
                 inline_m = re.search(r'(?<!class\s)(?<!return\s)\btype\s*=\s*(0x[0-9a-fA-F]+)', line)
@@ -215,7 +269,6 @@ def parse_pdb_dump(text):
                 arg_m = _ARG_TYPE_RE.match(line)
                 if arg_m:
                     current_type.args.append({"type_id": arg_m.group(1), "type_name": arg_m.group(2)})
-            pass
             
         elif current_sym is not None:
             if current_sym.get("kind") in ("S_GPROC32", "S_LPROC32", "S_GPROC32_ID", "S_LPROC32_ID", "S_GDATA32", "S_LDATA32", "S_UDT"):
@@ -242,6 +295,24 @@ def parse_pdb_dump(text):
 def _named_count(f):
     return len(f.get("args", []))
 
+def resolve_type_name(tid, types_db, depth=0):
+    if not tid or depth > 10:
+        return ""
+    t = types_db.get(tid)
+    if not t:
+        return ""
+    if t.name:
+        return t.name
+        
+    if t.referent_id:
+        base_name = resolve_type_name(t.referent_id, types_db, depth + 1)
+        if base_name:
+            if t.kind == "LF_POINTER":
+                return base_name + "*"
+            elif t.kind == "LF_ARRAY":
+                return base_name + "[]"
+            return base_name
+    return ""
 
 def extract_functions(functions_raw, types_db, struct_names, section_map):
     out = []
@@ -277,7 +348,9 @@ def extract_functions(functions_raw, types_db, struct_names, section_map):
         if "params" in fn and any(p.get("is_param") for p in fn["params"]):
             for p in fn["params"]:
                 if p.get("is_param"):
-                    t_name = p.get("type_name", "void*")
+                    t_name = p.get("type_name")
+                    if not t_name:
+                        t_name = resolve_type_name(p.get("type_id"), types_db) or "void*"
                     kind_str, _ = ffi_kind(t_name)
                     arg_dict = {"name": p["name"], "kind": kind_str}
                     view = pointee_struct(t_name)
@@ -287,28 +360,15 @@ def extract_functions(functions_raw, types_db, struct_names, section_map):
         else:
             if t_rec and t_rec.field_list_id and t_rec.field_list_id in types_db:
                 for i, arg_item in enumerate(types_db[t_rec.field_list_id].args):
-                    t_name = arg_item["type_name"]
+                    t_name = arg_item.get("type_name")
+                    if not t_name:
+                        t_name = resolve_type_name(arg_item.get("type_id"), types_db) or "void*"
                     kind_str, _ = ffi_kind(t_name)
                     arg_dict = {"name": f"arg{i}", "kind": kind_str}
                     view = pointee_struct(t_name)
                     if view:
                         arg_dict["view"] = view
                     args.append(arg_dict)
-
-        if not args and fn.get("type_name"):
-            t_name = fn["type_name"].strip()
-            if '(' in t_name and t_name.endswith(')'):
-                idx = t_name.rindex('(')
-                possible_args_str = t_name[idx+1:-1].strip()
-                if possible_args_str and possible_args_str != "void":
-                    raw_args = [a.strip() for a in possible_args_str.split(',') if a.strip()]
-                    for i, arg_t in enumerate(raw_args):
-                        kind_str, _ = ffi_kind(arg_t)
-                        arg_dict = {"name": f"arg{i}", "kind": kind_str}
-                        view = pointee_struct(arg_t)
-                        if view:
-                            arg_dict["view"] = view
-                        args.append(arg_dict)
 
         addr = fn.get("_addr")
         rva  = _resolve_rva(*addr, section_map) if addr else None
@@ -339,30 +399,42 @@ def extract_functions(functions_raw, types_db, struct_names, section_map):
             best[key] = f
     return list(best.values())
 
-
 def extract_structs(types_db):
     best = {}
-    
+
     for t_id, t in types_db.items():
         if t.kind in ("LF_STRUCTURE", "LF_CLASS", "LF_UNION"):
-            if t.field_list_id and t.field_list_id in types_db:
+            if not t.name: continue
+            has_fields = t.field_list_id and t.field_list_id in types_db
+            field_count = len(types_db[t.field_list_id].fields) if has_fields else 0
+            existing = best.get(t.name)
+            
+            if existing is None:
                 best[t.name] = t
+            else:
+                existing_has_fields = existing.field_list_id and existing.field_list_id in types_db
+                existing_count = len(types_db[existing.field_list_id].fields) if existing_has_fields else 0
+                if field_count > existing_count or (field_count == existing_count and t.byte_size > existing.byte_size):
+                    best[t.name] = t
                 
     final_output = []
     for name, t in best.items():
         fields = []
-        for fld in types_db[t.field_list_id].fields:
-            k, ln = ffi_kind(fld.get("type_name", ""))
-            f_info = {"name": fld["name"], "offset": fld["offset"], "kind": k}
-            if ln is not None: f_info["len"] = ln
-            fields.append(f_info)
-            
-        final_output.append({
-            "name": name,
-            "size": t.byte_size,
-            "fields": fields
-        })
+        if t.field_list_id and t.field_list_id in types_db:
+            for fld in types_db[t.field_list_id].fields:
+                fld_name = fld["name"]
+                fld_offset = fld["offset"]
+                raw_type_name = fld.get("type_name", "")
                 
+                if not raw_type_name or not raw_type_name.strip():
+                    raw_type_name = resolve_type_name(fld["type_id"], types_db)
+                
+                schema_props = resolve_field_schema(raw_type_name)
+                f_info = {"name": fld_name, "offset": fld_offset}
+                f_info.update(schema_props)
+                fields.append(f_info)
+                
+        final_output.append({"name": name, "size": t.byte_size, "fields": fields})
     return final_output
 
 def extract_enums(types_db):
@@ -383,19 +455,22 @@ def extract_enums(types_db):
             best[e["name"]] = e
     return list(best.values())
 
-
-def extract_globals(globals_raw, section_map):
+def extract_globals(globals_raw, section_map, types_db):
     out = []
     for g in globals_raw:
         addr = g.get("_addr")
         rva  = _resolve_rva(*addr, section_map) if addr else None
+        
+        t_name = g.get("type_name")
+        if not t_name:
+            t_name = resolve_type_name(g.get("type_id"), types_db)
+            
         out.append({
             "name": g["name"],
-            "kind": ffi_kind(g.get("type_name", ""))[0],
+            "kind": ffi_kind(t_name)[0],
             "addr": rva,
         })
     return out
-
 
 def extract_typedefs(typedefs_raw, types_db):
     seen = set()
@@ -408,11 +483,12 @@ def extract_typedefs(typedefs_raw, types_db):
         t_name = t.get("type_name")
         
         if not t_name and t.get("type_id"):
-            t_rec = types_db.get(t["type_id"])
+            t_name = resolve_type_name(t["type_id"], types_db)
+        
+        if not t_name:
+            t_rec = types_db.get(t.get("type_id"))
             if t_rec:
-                if t_rec.name:
-                    t_name = t_rec.name
-                elif t_rec.kind in ("LF_POINTER", "LF_ARRAY"):
+                if t_rec.kind in ("LF_POINTER", "LF_ARRAY"):
                     t_name = "void*"
                 elif t_rec.kind == "LF_ENUM":
                     t_name = "int"
@@ -420,8 +496,7 @@ def extract_typedefs(typedefs_raw, types_db):
         if not t_name:
             if t.get("type_id"):
                 t_name = "void*"
-            else:
-                print(f"Warning: Typedef '{alias}' has no type data. Skipping.")
+            else: 
                 continue
                 
         seen.add(alias)
@@ -444,6 +519,6 @@ def assemble_pdb(text):
         "functions": functions,
         "structs": sorted(structs, key=lambda s: s["name"]),
         "enums": sorted(extract_enums(types_db), key=lambda e: e["name"]),
-        "globals": sorted(extract_globals(globals_raw, section_map), key=lambda g: g["name"]),
+        "globals": sorted(extract_globals(globals_raw, section_map, types_db), key=lambda g: g["name"]),
         "typedefs": sorted(extract_typedefs(typedefs_raw, types_db), key=lambda t: t["alias"])
     }
