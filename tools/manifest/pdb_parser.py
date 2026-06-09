@@ -4,7 +4,7 @@ import re
 _RECORD_RE = re.compile(r'^\s*(0x[0-9a-fA-F]+)\s*\|\s*([A-Z0-9_]+)\s+\[size = \d+\](?:\s+`([^`]+)`)?')
 _FIELD_LIST_RE = re.compile(r'field list\s*=\s*(0x[0-9a-fA-F]+)')
 _SIZE_RE = re.compile(r'size\s*=\s*(\d+)')
-_RETURN_TYPE_RE = re.compile(r'return type\s*=\s*(0x[0-9a-fA-F]+)\s*\((.+)\)')
+_RETURN_TYPE_RE = re.compile(r'return type\s*=\s*(0x[0-9a-fA-F]+)\s*\((.+?)\)')
 _CLASS_TYPE_RE = re.compile(r'class type\s*=\s*(0x[0-9a-fA-F]+)')
 _PARAM_LIST_RE = re.compile(r'(?:param|arg) list\s*=\s*(0x[0-9a-fA-F]+)')
 
@@ -98,7 +98,7 @@ def _resolve_rva(seg_str, off_str, section_map):
 
     return f"0x{base + off:x}"
 class PdbType:
-    __slots__ = ("kind", "name", "fields", "enum_values", "args", "byte_size", "field_list_id", "return_type_name", "class_type_id")
+    __slots__ = ("kind", "name", "fields", "enum_values", "args", "byte_size", "field_list_id", "return_type_name", "class_type_id", "inline_type_id")
     def __init__(self, kind, name=""):
         self.kind = kind
         self.name = name
@@ -109,6 +109,7 @@ class PdbType:
         self.field_list_id = None
         self.return_type_name = "void"
         self.class_type_id = None
+        self.inline_type_id = None
 
 def parse_pdb_dump(text):
     types_db = {}
@@ -128,6 +129,11 @@ def parse_pdb_dump(text):
             tid, kind, name = m_rec.group(1), m_rec.group(2), m_rec.group(3) or ""
             current_type = PdbType(kind, name)
             types_db[tid] = current_type
+            
+            if kind in ("LF_FUNC_ID", "LF_MFUNC_ID"):
+                inline_m = re.search(r'(?<!class\s)(?<!return\s)\btype\s*=\s*(0x[0-9a-fA-F]+)', line)
+                if inline_m:
+                    current_type.inline_type_id = inline_m.group(1)
             continue
 
         m_sym = _SYM_RECORD_RE.match(line)
@@ -188,6 +194,11 @@ def parse_pdb_dump(text):
             p_m = _PARAM_LIST_RE.search(line)
             if p_m: current_type.field_list_id = p_m.group(1)
 
+            if current_type.kind in ("LF_FUNC_ID", "LF_MFUNC_ID"):
+                inline_m = re.search(r'(?<!class\s)(?<!return\s)\btype\s*=\s*(0x[0-9a-fA-F]+)', line)
+                if inline_m:
+                    current_type.inline_type_id = inline_m.group(1)
+
             if current_type.kind == "LF_FIELDLIST":
                 mem_m = _LF_MEMBER_RE.match(line)
                 if mem_m:
@@ -209,7 +220,6 @@ def parse_pdb_dump(text):
         elif current_sym is not None:
             if current_sym.get("kind") in ("S_GPROC32", "S_LPROC32", "S_GPROC32_ID", "S_LPROC32_ID", "S_GDATA32", "S_LDATA32"):
                 t_m = _SYM_TYPE_RE.search(line)
-                # Only set type and addr ONCE to prevent overwriting
                 if t_m and not current_sym.get("type_id"): 
                     current_sym["type_id"] = t_m.group(1)
                     if t_m.group(2): current_sym["type_name"] = t_m.group(2)
@@ -242,15 +252,27 @@ def extract_functions(functions_raw, types_db, struct_names, section_map):
         self_view = None
         args     = []
 
-        tid = fn["type_id"]
-        if tid and tid in types_db:
-            t_rec = types_db[tid]
+        tid = fn.get("type_id")
+        t_rec = types_db.get(tid) if tid else None
+        
+        if t_rec and t_rec.kind in ("LF_FUNC_ID", "LF_MFUNC_ID") and t_rec.inline_type_id:
+            t_rec = types_db.get(t_rec.inline_type_id)
+
+        if t_rec:
             ret = ffi_kind(t_rec.return_type_name)[0]
 
             if t_rec.kind == "LF_MFUNCTION":
                 member = True
                 if t_rec.class_type_id and t_rec.class_type_id in types_db:
                     self_view = types_db[t_rec.class_type_id].name
+
+        if ret == "void" and fn.get("type_name"):
+            t_name = fn["type_name"].strip()
+            if '(' in t_name and t_name.endswith(')'):
+                idx = t_name.rindex('(')
+                possible_ret = t_name[:idx].strip()
+                if possible_ret:
+                    ret = ffi_kind(possible_ret)[0]
 
         if "params" in fn and any(p.get("is_param") for p in fn["params"]):
             for p in fn["params"]:
@@ -263,14 +285,27 @@ def extract_functions(functions_raw, types_db, struct_names, section_map):
                         arg_dict["view"] = view
                     args.append(arg_dict)
         else:
-            if tid and tid in types_db:
-                t_rec = types_db[tid]
-                if t_rec.field_list_id and t_rec.field_list_id in types_db:
-                    for i, arg_item in enumerate(types_db[t_rec.field_list_id].args):
-                        t_name = arg_item["type_name"]
-                        kind_str, _ = ffi_kind(t_name)
+            if t_rec and t_rec.field_list_id and t_rec.field_list_id in types_db:
+                for i, arg_item in enumerate(types_db[t_rec.field_list_id].args):
+                    t_name = arg_item["type_name"]
+                    kind_str, _ = ffi_kind(t_name)
+                    arg_dict = {"name": f"arg{i}", "kind": kind_str}
+                    view = pointee_struct(t_name)
+                    if view:
+                        arg_dict["view"] = view
+                    args.append(arg_dict)
+
+        if not args and fn.get("type_name"):
+            t_name = fn["type_name"].strip()
+            if '(' in t_name and t_name.endswith(')'):
+                idx = t_name.rindex('(')
+                possible_args_str = t_name[idx+1:-1].strip()
+                if possible_args_str and possible_args_str != "void":
+                    raw_args = [a.strip() for a in possible_args_str.split(',') if a.strip()]
+                    for i, arg_t in enumerate(raw_args):
+                        kind_str, _ = ffi_kind(arg_t)
                         arg_dict = {"name": f"arg{i}", "kind": kind_str}
-                        view = pointee_struct(t_name)
+                        view = pointee_struct(arg_t)
                         if view:
                             arg_dict["view"] = view
                         args.append(arg_dict)
