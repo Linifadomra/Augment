@@ -6,18 +6,25 @@ _FIELD_LIST_RE = re.compile(r'field list\s*=\s*(0x[0-9a-fA-F]+)')
 _SIZE_RE = re.compile(r'size\s*=\s*(\d+)')
 _RETURN_TYPE_RE = re.compile(r'return type\s*=\s*(0x[0-9a-fA-F]+)\s*\((.+)\)')
 _CLASS_TYPE_RE = re.compile(r'class type\s*=\s*(0x[0-9a-fA-F]+)')
-_PARAM_LIST_RE = re.compile(r'param list\s*=\s*(0x[0-9a-fA-F]+)')
+_PARAM_LIST_RE = re.compile(r'(?:param|arg) list\s*=\s*(0x[0-9a-fA-F]+)')
 
 _LF_MEMBER_RE = re.compile(r'^\s*-\s+LF_MEMBER\s+\[name\s*=\s*`([^`]+)`,\s*Type\s*=\s*(0x[0-9a-fA-F]+)\s*\((.+)\),\s*offset\s*=\s*(\d+)')
 _LF_ENUMERATE_RE = re.compile(r'^\s*-\s+LF_ENUMERATE\s+\[name\s*=\s*`([^`]+)`,\s*value\s*=\s*(-?\d+|0x[0-9a-fA-F]+)')
-_ARG_TYPE_RE = re.compile(r'^\s*-\s+ArgType\s*=\s*(0x[0-9a-fA-F]+)\s*\((.+)\)')
+_ARG_TYPE_RE = re.compile(r'^\s*(?:-\s+ArgType\s*=\s*|<type:\s*)(0x[0-9a-fA-F]+)\s*\(([^)]+)\)')
 
-_SYM_RECORD_RE = re.compile(r'^\s*(\d+|0x[0-9a-fA-F]+)\s*\|\s*(S_GPROC32|S_LPROC32|S_GDATA32|S_LDATA32|S_UDT)\s+\[size = \d+\](?:\s+`([^`]+)`)?')
-_SYM_TYPE_RE = re.compile(r'type\s*=\s*(0x[0-9a-fA-F]+)\s*(?:\((.+)\))?')
-_SYM_ADDR_RE = re.compile(r'addr\s*=\s*([0-9a-fA-F]+):([0-9a-fA-F]+)')
+_SYM_RECORD_RE = re.compile(
+    r'^\s*(\d+|0x[0-9a-fA-F]+)\s*\|\s*'
+    r'(S_[A-Z0-9_]+)'
+    r'(?:\s+\[size = \d+\])?(?:\s+`([^`]+)`)?'
+)
 
-_SEC_NUM_RE = re.compile(r'SECTION HEADER #(\d+)')
-_SEC_VA_RE  = re.compile(r'([0-9a-fA-F]+)\s+virtual address')
+_SYM_TYPE_RE = re.compile(r'type\s*=\s*`?(0x[0-9a-fA-F]+)\s*(?:\((.+)\))?')
+_SYM_ADDR_RE = re.compile(
+    r'addr\s*=\s*([0-9a-fA-F]+)\s*:\s*([0-9a-fA-F]+)'
+)
+
+_SEC_NUM_RE = re.compile(r'SECTION HEADER #(\d+)', re.IGNORECASE)
+_SEC_VA_RE  = re.compile(r'([0-9a-fA-F]+)\s+virtual address', re.IGNORECASE)
 
 _PRIM = {
     "void": "void", "bool": "u8", "char": "i8", "signed char": "i8", "unsigned char": "u8",
@@ -40,7 +47,7 @@ def ffi_kind(t):
     m = _CHAR_ARR_RE.match(t)
     if m:
         return ("str", int(m.group(1)))
-    if "*" in t or "&" in t or "[]" in t:
+    if re.search(r"(\b\w+\s*\*\s*|\b\w+\s*&\s*)", t):
         return ("ptr", None)
     base = t.replace("const", "").replace("volatile", "").strip()
     return (_PRIM.get(base, "ptr"), None)
@@ -53,8 +60,9 @@ def pointee_struct(t):
             return base
     return None
 
-def _flat(qualified):
-    return qualified.split("(")[0].strip().replace("::", "_").replace(" ", "")
+def _flat(qname):
+    base = qname.split("(")[0].strip().replace("::", "_").replace(" ", "")
+    return base
 
 def parse_section_headers(text):
     sections = {}
@@ -72,16 +80,23 @@ def parse_section_headers(text):
 
 
 def _resolve_rva(seg_str, off_str, section_map):
+    if seg_str is None or off_str is None:
+        return None
+
     try:
         seg = int(seg_str, 16)
         off = int(off_str, 16)
     except (ValueError, TypeError):
         return None
-    if not off:          # null / unresolved symbol
+
+    if seg == 0:
         return None
-    if section_map and seg in section_map:
-        return hex(section_map[seg] + off)
-    return hex(off)      # degraded fallback — correct only for single-section images
+
+    base = section_map.get(seg)
+    if base is None:
+        return None
+
+    return f"0x{base + off:x}"
 class PdbType:
     __slots__ = ("kind", "name", "fields", "enum_values", "args", "byte_size", "field_list_id", "return_type_name", "class_type_id")
     def __init__(self, kind, name=""):
@@ -103,11 +118,13 @@ def parse_pdb_dump(text):
     
     current_type = None
     current_sym = None
+    current_func = None
 
     for line in text.splitlines():
         m_rec = _RECORD_RE.match(line)
         if m_rec:
-            current_sym = None  # Clear context
+            current_sym = None
+            current_func = None
             tid, kind, name = m_rec.group(1), m_rec.group(2), m_rec.group(3) or ""
             current_type = PdbType(kind, name)
             types_db[tid] = current_type
@@ -115,21 +132,43 @@ def parse_pdb_dump(text):
 
         m_sym = _SYM_RECORD_RE.match(line)
         if m_sym:
-            current_type = None  # Clear context
+            current_type = None
             sym_kind, sym_name = m_sym.group(2), m_sym.group(3) or ""
-            current_sym = {
-                "kind":      sym_kind,
-                "name":      sym_name,
-                "type_id":   None,
-                "type_name": "",
-                "_addr":     None,
-            }
-            if sym_kind in ("S_GPROC32", "S_LPROC32"):
-                functions.append(current_sym)
+            
+            if sym_kind in ("S_GPROC32", "S_LPROC32", "S_GPROC32_ID", "S_LPROC32_ID"):
+                current_func = {
+                    "kind": sym_kind,
+                    "name": sym_name,
+                    "type_id": None,
+                    "type_name": "",
+                    "_addr": None,
+                    "params": []
+                }
+                functions.append(current_func)
+                current_sym = current_func
+                
+            elif sym_kind == "S_LOCAL":
+                if current_func is not None:
+                    current_sym = {
+                        "kind": sym_kind, "name": sym_name,
+                        "type_id": None, "type_name": "", "is_param": False
+                    }
+                    current_func["params"].append(current_sym)
+                else:
+                    current_sym = None
+                    
+            elif sym_kind in ("S_END", "S_INLINESITE_END", "S_PROC_ID_END"):
+                current_func = None
+                current_sym = None
+                
             elif sym_kind in ("S_GDATA32", "S_LDATA32"):
+                current_sym = { "name": sym_name, "kind": sym_kind, "type_id": None, "type_name": "", "_addr": None }
                 globals_list.append(current_sym)
             elif sym_kind == "S_UDT":
+                current_sym = { "name": sym_name, "kind": sym_kind }
                 typedefs.append(current_sym)
+            else:
+                current_sym = None 
             continue
 
         if current_type is not None:
@@ -165,16 +204,28 @@ def parse_pdb_dump(text):
                 arg_m = _ARG_TYPE_RE.match(line)
                 if arg_m:
                     current_type.args.append({"type_id": arg_m.group(1), "type_name": arg_m.group(2)})
-
-        elif current_sym is not None:
-            t_m = _SYM_TYPE_RE.search(line)
-            if t_m:
-                current_sym["type_id"] = t_m.group(1)
-                if t_m.group(2): current_sym["type_name"] = t_m.group(2)
+            pass
             
-            addr_m = _SYM_ADDR_RE.search(line)
-            if addr_m:
-                current_sym["_addr"] = (addr_m.group(1), addr_m.group(2))
+        elif current_sym is not None:
+            if current_sym.get("kind") in ("S_GPROC32", "S_LPROC32", "S_GPROC32_ID", "S_LPROC32_ID", "S_GDATA32", "S_LDATA32"):
+                t_m = _SYM_TYPE_RE.search(line)
+                # Only set type and addr ONCE to prevent overwriting
+                if t_m and not current_sym.get("type_id"): 
+                    current_sym["type_id"] = t_m.group(1)
+                    if t_m.group(2): current_sym["type_name"] = t_m.group(2)
+                
+                addr_m = _SYM_ADDR_RE.search(line)
+                if addr_m and not current_sym.get("_addr"):
+                    current_sym["_addr"] = (addr_m.group(1), addr_m.group(2))
+                    
+            elif current_sym.get("kind") == "S_LOCAL":
+                t_m = re.search(r'type\s*=\s*`?(0x[0-9a-fA-F]+)\s*(?:\(([^)]+)\))?`?', line)
+                if t_m:
+                    current_sym["type_id"] = t_m.group(1)
+                    if t_m.group(2): current_sym["type_name"] = t_m.group(2)
+                
+                if re.search(r'flags\s*=[^,]*\bparam\b', line):
+                    current_sym["is_param"] = True
 
     return types_db, functions, globals_list, typedefs
 
@@ -201,15 +252,28 @@ def extract_functions(functions_raw, types_db, struct_names, section_map):
                 if t_rec.class_type_id and t_rec.class_type_id in types_db:
                     self_view = types_db[t_rec.class_type_id].name
 
-            if t_rec.field_list_id and t_rec.field_list_id in types_db:
-                for i, arg_item in enumerate(types_db[t_rec.field_list_id].args):
-                    t_name = arg_item["type_name"]
+        if "params" in fn and any(p.get("is_param") for p in fn["params"]):
+            for p in fn["params"]:
+                if p.get("is_param"):
+                    t_name = p.get("type_name", "void*")
                     kind_str, _ = ffi_kind(t_name)
-                    arg_dict = {"name": f"arg{i}", "kind": kind_str}
+                    arg_dict = {"name": p["name"], "kind": kind_str}
                     view = pointee_struct(t_name)
                     if view:
                         arg_dict["view"] = view
                     args.append(arg_dict)
+        else:
+            if tid and tid in types_db:
+                t_rec = types_db[tid]
+                if t_rec.field_list_id and t_rec.field_list_id in types_db:
+                    for i, arg_item in enumerate(types_db[t_rec.field_list_id].args):
+                        t_name = arg_item["type_name"]
+                        kind_str, _ = ffi_kind(t_name)
+                        arg_dict = {"name": f"arg{i}", "kind": kind_str}
+                        view = pointee_struct(t_name)
+                        if view:
+                            arg_dict["view"] = view
+                        args.append(arg_dict)
 
         addr = fn.get("_addr")
         rva  = _resolve_rva(*addr, section_map) if addr else None
@@ -225,15 +289,18 @@ def extract_functions(functions_raw, types_db, struct_names, section_map):
             "args":      args,
         })
 
+    def valid_rva(r):
+        return r is not None and r != "0x0"
+    
     best = {}
     for f in out:
         key = f["mangled"]
         cur = best.get(key)
         if cur is None:
             best[key] = f
-        elif f["rva"] is not None and cur["rva"] is None:
+        elif valid_rva(f["rva"]) and not valid_rva(cur["rva"]):
             best[key] = f
-        elif (f["rva"] is not None) == (cur["rva"] is not None) and _named_count(f) > _named_count(cur):
+        elif valid_rva(f["rva"]) == valid_rva(cur["rva"]) and _named_count(f) > _named_count(cur):
             best[key] = f
     return list(best.values())
 
@@ -291,8 +358,13 @@ def extract_typedefs(typedefs_raw):
     out = []
     for t in typedefs_raw:
         if t["name"] not in seen:
+            if "type_name" not in t:
+                print(f"Warning: Typedef '{t.get('name', 'UNKNOWN')}' is missing 'type_name'. Skipping.")
+                continue
+            
             seen.add(t["name"])
             out.append({"alias": t["name"], "kind": ffi_kind(t["type_name"])[0]})
+            
     return out
 
 def assemble_pdb(text):

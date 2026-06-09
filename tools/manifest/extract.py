@@ -50,8 +50,10 @@ def main():
             
         import pdb_parser
         
-        text = subprocess.run([PDBUTIL, "dump", "-types", "-symbols", "-publics", binpath],
-                             capture_output=True, text=True, encoding="utf-8", errors="ignore").stdout
+        text = subprocess.run([PDBUTIL, "dump", "-types", "-symbols", "-publics",
+                "-globals", "-section-headers", binpath],
+                capture_output=True, text=True, encoding="utf-8", errors="ignore"
+            ).stdout
         m = pdb_parser.assemble_pdb(text)
     else:
         if not DWARFDUMP:
