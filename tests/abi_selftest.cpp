@@ -11,8 +11,8 @@ extern "C" AUGMENT_NOINLINE AUGMENT_EXPORT float abitest_scale(float a, int n) {
     return r; 
 }
 
-AUGMENT_NOINLINE AUGMENT_EXPORT Vec3 abitest_make(Vec3 base, float k) { 
-    return { base.x + k, base.y + k, base.z + k }; 
+extern "C" AUGMENT_NOINLINE AUGMENT_EXPORT void abitest_make(Vec3* out, Vec3* base, float k) {
+    out->x = base->x + k; out->y = base->y + k; out->z = base->z + k;
 }
 
 struct Obj {
@@ -28,7 +28,8 @@ static void before_scale(AugmentCtx* ctx, void*) {
     *(int*)ctx->args[1] += 1;
 }
 static void before_make(AugmentCtx* ctx, void*) {
-    ((Vec3*)ctx->args[0])->x += 100.f;
+    Vec3* base = *(Vec3**)ctx->args[1];
+    base->x += 100.f;
 }
 static void before_hit(AugmentCtx* ctx, void*) {
     ((Obj*)ctx->self)->life = 50;
@@ -42,8 +43,8 @@ int main() {
     {
         const char* mem[3] = {"f32", "f32", "f32"};
         augment_register_struct("Vec3", mem, 3);
-        const char* a[2] = {"struct:Vec3", "f32"};
-        augment_register_signature("abitest_make", 0, "struct:Vec3", a, 2);
+        const char* a[3] = {"ptr", "ptr", "f32"};
+        augment_register_signature("abitest_make", 0, "void", a, 3);
         AugmentRegOpts o{}; o.augment_id = "m";
         augment_register("abitest_make", AUGMENT_PHASE_BEFORE, before_make, nullptr, &o);
     }
@@ -58,7 +59,9 @@ int main() {
     float s = abitest_scale(2.0f, 3);
     if (s != 8.0f) { std::printf("FAIL scale: %f\n", s); ok = 0; }
 
-    Vec3 v = abitest_make({1,2,3}, 10);
+    Vec3 base{1,2,3};
+    Vec3 v{};
+    abitest_make(&v, &base, 10);
     if (v.x != 111.f || v.y != 12.f) { std::printf("FAIL make: %f %f\n", v.x, v.y); ok = 0; }
 
     Obj obj{200};
