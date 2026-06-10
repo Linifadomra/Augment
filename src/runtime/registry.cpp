@@ -19,6 +19,7 @@
 #include "augment/augment.hpp"
 
 #include <cstdarg>
+#include <vector>
 #include <mutex>
 #include <cstdio>
 
@@ -108,8 +109,11 @@ bool Registry::register_augment(const char* symbol, AugmentPhase phase,
 
     chain->add(e);
 
-    if (m_installed && !chain->installed)
-        install_chain(symbol, *chain);
+    if (m_installed && !chain->installed) {
+        std::string sym = symbol;
+        lock.unlock();
+        install_chain(sym, *chain);
+    }
 
     return true;
 }
@@ -173,14 +177,19 @@ void Registry::unregister_augment(const char* augment_id) {
 }
 
 void Registry::install_all() {
-    std::unique_lock lock(m_mutex);
-    if (m_installed) return;
-    m_installed = true;
-
-    for (auto& [symbol, chain] : m_chains) {
-        if (chain.installed || chain.empty()) continue;
-        install_chain(symbol, chain);
+    std::vector<std::pair<std::string, Chain*>> pending;
+    {
+        std::unique_lock lock(m_mutex);
+        if (m_installed) return;
+        m_installed = true;
+        pending.reserve(m_chains.size());
+        for (auto& [symbol, chain] : m_chains) {
+            if (!chain.installed && !chain.empty())
+                pending.emplace_back(symbol, &chain);
+        }
     }
+    for (auto& [symbol, chain] : pending)
+        install_chain(symbol, *chain);
 }
 
 void Registry::clear() {
