@@ -19,7 +19,7 @@ option(AUGMENT_FFI              "Build libffi closure/call support" ON )
 set(DOBBY_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(DOBBY_BUILD_STATIC ON CACHE BOOL "" FORCE)
 
-add_subdirectory(vendor/dobby EXCLUDE_FROM_ALL)
+add_subdirectory(vendor/dobby)
 if(AUGMENT_FFI)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/libffi.cmake)
 endif()
@@ -55,11 +55,12 @@ target_include_directories(augment
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/dobby/include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_link_libraries(augment PUBLIC dobby_static)
+target_link_libraries(augment PUBLIC dobby)
 
 if(AUGMENT_FFI)
     target_link_libraries(augment PUBLIC ffi)
