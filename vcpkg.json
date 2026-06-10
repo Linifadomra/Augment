@@ -1,0 +1,9 @@
+{
+  "name": "augment",
+  "version": "0.0.1",
+  "dependencies": [
+    "libffi",
+    "minhook"
+  ],
+  "builtin-baseline": "f7805f1a46ba696714b74479ac358305cb087fd4"
+}
