@@ -35,6 +35,8 @@ target_sources(augment PRIVATE
     src/runtime/manifest.cpp
     src/runtime/introspect.cpp
     src/platform/hook_backend.cpp
+    src/platform/selftest_probe_target.cpp
+    src/platform/selftest_probe_replacement.cpp
     src/platform/sym_resolve.cpp
 )
 

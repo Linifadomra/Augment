@@ -17,9 +17,13 @@
 
 #include <cstdint>
 
+extern "C" int augment_plat_selftest_target(int x);
+extern "C" int augment_plat_selftest_replacement(int x);
+
 namespace augment::plat {
 
 uint64_t func_gap(void* target);
+void     selftest_bind_orig(void* orig);
 
 bool hook_install(void* target, void* replacement, void** out_original) {
     if (!target || func_gap(target) < 16) return false;
@@ -30,24 +34,18 @@ bool hook_remove(void* target) {
     return target && DobbyDestroy(target) == 0;
 }
 
-#if defined(_MSC_VER)
-__declspec(noinline)
-#else
-__attribute__((noinline))
-#endif
-static int selftest_target(int x) { return x + 1; }
-static int (*selftest_orig)(int) = nullptr;
-static int selftest_replacement(int x) { return selftest_orig(x) + 100; }
-
 bool self_test(void) {
     volatile int arg = 5;
-    int before = selftest_target(arg);
+    int before = augment_plat_selftest_target(arg);
     void* out = nullptr;
-    if (!hook_install((void*)selftest_target, (void*)selftest_replacement, &out)) return false;
-    selftest_orig = (int(*)(int))out;
-    int hooked = selftest_target(arg);
-    hook_remove((void*)selftest_target);
-    int restored = selftest_target(arg);
+    if (!hook_install(reinterpret_cast<void*>(augment_plat_selftest_target),
+                      reinterpret_cast<void*>(augment_plat_selftest_replacement), &out)) {
+        return false;
+    }
+    selftest_bind_orig(out);
+    int hooked = augment_plat_selftest_target(arg);
+    hook_remove(reinterpret_cast<void*>(augment_plat_selftest_target));
+    int restored = augment_plat_selftest_target(arg);
     return hooked == before + 100 && restored == before;
 }
 
