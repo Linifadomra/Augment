@@ -22,7 +22,7 @@ set(DOBBY_BUILD_STATIC ON CACHE BOOL "" FORCE)
 if(WIN32)
     find_package(minhook CONFIG REQUIRED)
 else() 
-    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/dobby.cmake)
+    add_subdirectory(vendor/dobby)
 endif()
 
 if(AUGMENT_FFI)
