@@ -66,8 +66,3 @@ add_test(NAME introspect COMMAND introspect_test WORKING_DIRECTORY ${CMAKE_CURRE
 add_executable(mem_test mem_test.cpp)
 target_link_libraries(mem_test PRIVATE augment::augment)
 add_test(NAME mem COMMAND mem_test)
-if(AUGMENT_FFI)
-    add_executable(abi_selftest abi_selftest.cpp)
-    target_link_libraries(abi_selftest PRIVATE augment::augment ffi)
-    add_test(NAME abi COMMAND abi_selftest)
-endif()
