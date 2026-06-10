@@ -1,9 +1,11 @@
-#include "augment/augment.hpp"
+// mixin_selftest.cpp
 
+#include "augment/platform_compat.hpp"
+#include "augment/augment.hpp"
 #include <cstdio>
 
 namespace augtest {
-__attribute__((noinline)) float scale(float base, float mul);
+AUGMENT_NOINLINE float scale(float base, float mul);
 }
 
 float augtest::scale(float base, float mul) {

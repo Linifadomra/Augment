@@ -1,0 +1,139 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CMake Configure (vcpkg)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-B",
+        "build",
+        "-S",
+        ".",
+        "-G",
+        "Visual Studio 17 2022",
+        "-A",
+        "x64",
+        "-DCMAKE_TOOLCHAIN_FILE=C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake",
+        "-DAUGMENT_TESTS=ON",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake Build (Debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "build",
+        "--config",
+        "Debug"
+      ],
+      "group": "build",
+      "dependsOn": "CMake Configure (vcpkg)",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run CTest (Debug)",
+      "type": "shell",
+      "command": "ctest",
+      "args": [
+        "--test-dir",
+        "build",
+        "-C",
+        "Debug",
+        "--output-on-failure"
+      ],
+      "dependsOn": "CMake Build (Debug)",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake Build (RelWithDebInfo)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "build",
+        "--config",
+        "RelWithDebInfo"
+      ],
+      "group": "build",
+      "dependsOn": "CMake Configure (vcpkg)",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run CTest (RelWithDebInfo)",
+      "type": "shell",
+      "command": "ctest",
+      "args": [
+        "--test-dir",
+        "build",
+        "-C",
+        "RelWithDebInfo",
+        "--output-on-failure"
+      ],
+      "dependsOn": "CMake Build (RelWithDebInfo)",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build + Test All (RelWithDebInfo)",
+      "dependsOn": [
+        "CMake Configure (vcpkg)",
+        "CMake Build (RelWithDebInfo)",
+        "Run CTest (RelWithDebInfo)"
+      ],
+      "dependsOrder": "sequence"
+    },
+    {
+      "label": "CMake Build (Release)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "build",
+        "--config",
+        "Release"
+      ],
+      "group": "build",
+      "dependsOn": "CMake Configure (vcpkg)",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run CTest (Release)",
+      "type": "shell",
+      "command": "ctest",
+      "args": [
+        "--test-dir",
+        "build",
+        "-C",
+        "Release",
+        "--output-on-failure"
+      ],
+      "dependsOn": "CMake Build (Release)",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build + Test All (Release)",
+      "dependsOn": [
+        "CMake Configure (vcpkg)",
+        "CMake Build (Release)",
+        "Run CTest (Release)"
+      ],
+      "dependsOrder": "sequence"
+    },
+    {
+      "label": "Build + Test All (Debug)",
+      "dependsOn": [
+        "CMake Configure (vcpkg)",
+        "CMake Build (Debug)",
+        "Run CTest (Debug)"
+      ],
+      "dependsOrder": "sequence"
+    }
+  ]
+}

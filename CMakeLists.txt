@@ -16,7 +16,15 @@ option(AUGMENT_USE_FETCHCONTENT "Build Augment using FetchContent"  ON )
 option(AUGMENT_FFI              "Build libffi closure/call support" ON )
 
 # == DEPENDENCIES ==
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/dobby.cmake)
+set(DOBBY_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(DOBBY_BUILD_STATIC ON CACHE BOOL "" FORCE)
+
+if(WIN32)
+    find_package(minhook CONFIG REQUIRED)
+else() 
+    add_subdirectory(vendor/dobby)
+endif()
+
 if(AUGMENT_FFI)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/libffi.cmake)
 endif()
@@ -52,11 +60,16 @@ target_include_directories(augment
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/dobby/include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_link_libraries(augment PRIVATE dobby)
+if(WIN32)
+    target_link_libraries(augment PRIVATE minhook::minhook)
+else()
+    target_link_libraries(augment PUBLIC dobby)
+endif()
 
 if(AUGMENT_FFI)
     target_link_libraries(augment PUBLIC ffi)

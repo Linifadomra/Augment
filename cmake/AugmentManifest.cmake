@@ -44,16 +44,17 @@ function(augment_manifest)
         list(APPEND _pack_cmd "--exclude-prefix-file" "${_excl_prefix_file}")
     endif()
 
-    if(MSVC)
+    if(WIN32 AND MSVC)
         target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:/Zi>)
-        message(WARNING "augment_manifest: PDB extractor not implemented yet; ${AM_OUTPUT} not produced (must emit manifest.json schema v2)")
-        return()
+        set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
+    else()
+        target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:-g>)
+        set(_extract_src "$<TARGET_FILE:${AM_TARGET}>")
     endif()
 
-    target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:-g>)
     set(_target_bin $<TARGET_FILE:${AM_TARGET}>)
+
     if(AM_SEPARATE_TARGET)
-        # --- only runs when explicitly requested ---
         if(APPLE)
             set(_dbg "${_target_bin}.dSYM")
             add_custom_command(
@@ -67,13 +68,13 @@ function(augment_manifest)
             )
         else()
             set(_strip_cmd "")
-            if(CMAKE_BUILD_TYPE STREQUAL "Release")
+            if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
                 set(_strip_cmd COMMAND "${CMAKE_OBJCOPY}" --strip-debug "${_target_bin}")
             endif()
             add_custom_command(
                 OUTPUT  "${AM_OUTPUT}" "${AM_JSON}"
                 COMMAND "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
-                        "${_target_bin}" "${AM_JSON}"
+                        "${_extract_src}" "${AM_JSON}"
                 COMMAND ${_pack_cmd}
                 ${_strip_cmd}
                 DEPENDS "${_target_bin}"
@@ -85,7 +86,6 @@ function(augment_manifest)
         )
         add_dependencies("gen_manifest" "${AM_TARGET}")
     else()
-        # --- runs automatically on every POST_BUILD ---
         if(APPLE)
             set(_dbg "${_target_bin}.dSYM")
             add_custom_command(TARGET ${AM_TARGET} POST_BUILD
@@ -98,13 +98,13 @@ function(augment_manifest)
         else()
             add_custom_command(TARGET ${AM_TARGET} POST_BUILD
                 COMMAND "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
-                        "${_target_bin}" "${AM_JSON}"
+                        "${_extract_src}" "${AM_JSON}"
                 COMMAND ${_pack_cmd}
                 VERBATIM
             )
-            if(CMAKE_BUILD_TYPE STREQUAL "Release")
+            if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
                 add_custom_command(TARGET ${AM_TARGET} POST_BUILD
-                    COMMAND ${CMAKE_OBJCOPY} --strip-debug $<TARGET_FILE:${AM_TARGET}>
+                    COMMAND ${CMAKE_OBJCOPY} --strip-debug "${_target_bin}"
                     VERBATIM
                 )
             endif()

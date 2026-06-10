@@ -102,6 +102,10 @@ foreach(f ${DOBBY_ALL_ARCH_FILES})
     endif()
 endforeach()
 
+target_include_directories(dobby_static PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/dobby/include
+)
+
 foreach(target dobby dobby_static DobbyX macho_ctx_kit shared_cache_ctx_kit dobby_symbol_resolver)
     if(TARGET ${target})
         # Filter sources

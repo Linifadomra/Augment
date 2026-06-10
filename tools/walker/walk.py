@@ -8,7 +8,7 @@ Walks one or more C/C++ headers via libclang and emits:
   3. augment_trampolines.cpp -> generated dispatch wrappers
 
 Usage:
-    python3 augment_walker.py [options] header1.hpp header2.hpp ...
+    python3 walk.py [options] header1.hpp header2.hpp ...
 
 Options:
     --output-dir DIR     Where to write the three output files (default: .)
@@ -329,10 +329,16 @@ def emit_trampoline(sym: Symbol) -> str:
 
 # Top-level emitter
 
-def make_include(header: str, root: str | None) -> str:
-    if root:
-        return os.path.relpath(header, root)
-    return os.path.basename(header)
+def make_include(header: str, include_root: str | None) -> str:
+    from pathlib import Path
+
+    h = Path(header).resolve()
+
+    if include_root:
+        root = Path(include_root).resolve()
+        return h.relative_to(root).as_posix()
+
+    return h.name
 
 def emit_ctx_hpp(symbols: list[Symbol], headers: list[str], include_root: str | None = None) -> str:
     user_includes = "\n".join(f'#include "{make_include(h, include_root)}"' for h in headers)

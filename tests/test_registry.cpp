@@ -1,3 +1,5 @@
+// test_registry.cpp
+
 #include "runtime/registry.hpp"
 #include <cassert>
 #include <cstdio>

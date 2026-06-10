@@ -1,3 +1,4 @@
+// platform_stub.cpp
 // Minimal platform stub for registry tests.
 // Satisfies the linker without any real hooking behavior.
 #include <cstdint>

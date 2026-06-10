@@ -60,7 +60,7 @@ The walker runs as a CMake custom command at build time when headers change.
 It takes explicit header paths. To run it manually:
 
 ```bash
-python3 tools/augment_walker.py \
+python3 tools/walker/walk.py \
     --output-dir build/augment_generated \
     path/to/your/header.hpp
 ```

@@ -6,7 +6,8 @@
 
 int main() {
     struct S { int32_t a; float b; char name[8]; } s{};
-    augment_mem_write(&s, 0, "i32", (const void*)(const int32_t[]){42});
+    int32_t v = 42;
+    augment_mem_write(&s, 0, "i32", &v);
     float fv = 3.5f;
     augment_mem_write(&s, 4, "f32", &fv);
     augment_mem_write_str(&s, 8, 8, "ABCDEFGHIJK");

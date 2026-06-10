@@ -243,34 +243,33 @@ uint64_t func_gap(void* target) {
 #elif defined(_WIN32)
 
 #include <windows.h>
+#include <dbghelp.h>
+
+#pragma comment(lib, "dbghelp.lib")
 
 namespace augment::plat {
 
 namespace {
 
 struct image_syms {
-    uint8_t*                      base = nullptr;
-    const IMAGE_EXPORT_DIRECTORY* exp  = nullptr;
-    bool                          ok   = false;
+    HANDLE  process = nullptr;
+    ULONG64 base    = 0;
+    bool    ok      = false;
 };
 
 image_syms load_image() {
     image_syms out;
-    auto* base = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
-    if (!base) return out;
 
-    auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
-    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return out;
-    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE) return out;
+    HANDLE process = GetCurrentProcess();
 
-    const IMAGE_DATA_DIRECTORY& dir =
-        nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-    if (!dir.VirtualAddress) return out;
+    SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
 
-    out.base = base;
-    out.exp  = reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(base + dir.VirtualAddress);
-    out.ok   = true;
+    if (!SymInitialize(process, nullptr, TRUE))
+        return out;
+
+    out.process = process;
+    out.base    = reinterpret_cast<ULONG64>(GetModuleHandleW(nullptr));
+    out.ok      = true;
     return out;
 }
 
@@ -279,36 +278,58 @@ const image_syms& image() {
     return img;
 }
 
+struct gap_context {
+    uint64_t target = 0;
+    uint64_t best   = UINT64_MAX;
+};
+
 } // namespace
 
 void* sym_resolve(const char* symbol) {
     const image_syms& img = image();
-    if (!symbol || !img.ok) return nullptr;
+    if (!symbol || !img.ok)
+        return nullptr;
 
-    auto* names = reinterpret_cast<const uint32_t*>(img.base + img.exp->AddressOfNames);
-    auto* ords  = reinterpret_cast<const uint16_t*>(img.base + img.exp->AddressOfNameOrdinals);
-    auto* funcs = reinterpret_cast<const uint32_t*>(img.base + img.exp->AddressOfFunctions);
-    for (uint32_t i = 0; i < img.exp->NumberOfNames; ++i) {
-        const char* name = reinterpret_cast<const char*>(img.base + names[i]);
-        if (std::strcmp(name, symbol) == 0)
-            return img.base + funcs[ords[i]];
-    }
-    return nullptr;
+    char storage[sizeof(SYMBOL_INFO) + MAX_SYM_NAME];
+    auto* info = reinterpret_cast<PSYMBOL_INFO>(storage);
+
+    info->SizeOfStruct = sizeof(SYMBOL_INFO);
+    info->MaxNameLen   = MAX_SYM_NAME;
+
+    if (!SymFromName(img.process, symbol, info))
+        return nullptr;
+
+    return reinterpret_cast<void*>(info->Address);
 }
 
 uint64_t func_gap(void* target) {
     const image_syms& img = image();
-    if (!img.ok) return UINT64_MAX;
+    if (!target || !img.ok)
+        return UINT64_MAX;
 
-    auto* funcs = reinterpret_cast<const uint32_t*>(img.base + img.exp->AddressOfFunctions);
-    uint64_t at   = reinterpret_cast<uint64_t>(target);
-    uint64_t best = UINT64_MAX;
-    for (uint32_t i = 0; i < img.exp->NumberOfFunctions; ++i) {
-        if (!funcs[i]) continue;
-        uint64_t addr = reinterpret_cast<uint64_t>(img.base + funcs[i]);
-        if (addr > at && addr - at < best) best = addr - at;
-    }
-    return best;
+    gap_context ctx{
+        reinterpret_cast<uint64_t>(target),
+        UINT64_MAX
+    };
+
+    SymEnumSymbols(
+        img.process,
+        img.base,
+        "*",
+        [](PSYMBOL_INFO sym, ULONG, PVOID user) -> BOOL {
+            auto* ctx = static_cast<gap_context*>(user);
+
+            if (sym->Address > ctx->target) {
+                uint64_t gap = sym->Address - ctx->target;
+                if (gap < ctx->best)
+                    ctx->best = gap;
+            }
+
+            return TRUE;
+        },
+        &ctx);
+
+    return ctx.best;
 }
 
 intptr_t image_slide() {
