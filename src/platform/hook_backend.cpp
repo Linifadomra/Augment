@@ -13,17 +13,44 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include <dobby.h>
-
 #include <cstdint>
+#include <cstring>
 
 extern "C" int augment_plat_selftest_target(int x);
 extern "C" int augment_plat_selftest_replacement(int x);
 
 namespace augment::plat {
+void selftest_bind_orig(void* orig);
+
+#if defined(_WIN32)
+
+#include <MinHook.h>
+
+namespace {
+    bool mh_initialized = false;
+}
+
+bool hook_install(void* target, void* replacement, void** out_original) {
+    if (!target) return false;
+    if (!mh_initialized) {
+        if (MH_Initialize() != MH_OK) return false;
+        mh_initialized = true;
+    }
+    if (MH_CreateHook(target, replacement, out_original) != MH_OK) return false;
+    return MH_EnableHook(target) == MH_OK;
+}
+
+bool hook_remove(void* target) {
+    if (!target) return false;
+    MH_DisableHook(target);
+    return MH_RemoveHook(target) == MH_OK;
+}
+
+#else
+
+#include <dobby.h>
 
 uint64_t func_gap(void* target);
-void     selftest_bind_orig(void* orig);
 
 bool hook_install(void* target, void* replacement, void** out_original) {
     if (!target || func_gap(target) < 16) return false;
@@ -33,6 +60,8 @@ bool hook_install(void* target, void* replacement, void** out_original) {
 bool hook_remove(void* target) {
     return target && DobbyDestroy(target) == 0;
 }
+
+#endif
 
 bool self_test(void) {
     volatile int arg = 5;
