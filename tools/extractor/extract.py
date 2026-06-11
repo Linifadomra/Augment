@@ -23,7 +23,7 @@ import time
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-import extractor.utility.dependencies
+
 
 
 def _require_libclang() -> None:
@@ -151,6 +151,12 @@ def run(
                         if dedup_key not in seen[key]:
                             seen[key].add(dedup_key)
                             combined[key].append(record)
+                        elif key == "functions":
+                            for i, existing in enumerate(combined[key]):
+                                if _dedup_key(key, existing) == dedup_key:
+                                    if not existing.get("loc") and record.get("loc"):
+                                        combined[key][i] = record
+                                    break
 
     if skipped[0]:
         msg = (

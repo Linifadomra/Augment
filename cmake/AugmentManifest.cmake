@@ -5,7 +5,7 @@ endif()
 
 function(augment_manifest)
     cmake_parse_arguments(AM "SEPARATE_TARGET"
-        "TARGET;OUTPUT;COMPILE_COMMANDS"
+        "TARGET;OUTPUT;COMPILE_COMMANDS;PROJECT_ROOT"
         "EXCLUDE;EXCLUDE_PREFIX"
         ${ARGN})
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -16,6 +16,10 @@ function(augment_manifest)
 
     if(NOT AM_COMPILE_COMMANDS)
         set(AM_COMPILE_COMMANDS "${CMAKE_BINARY_DIR}/compile_commands.json")
+    endif()
+
+    if(NOT AM_PROJECT_ROOT)
+        set(AM_PROJECT_ROOT "${CMAKE_SOURCE_DIR}")
     endif()
 
     set(_excl_args "")
@@ -53,7 +57,7 @@ function(augment_manifest)
         "--binary"            "${_extract_src}"
         "--compile-commands"  "${AM_COMPILE_COMMANDS}"
         "--output"            "${AM_OUTPUT}"
-        "--project-root"      "${CMAKE_SOURCE_DIR}"
+        "--project-root"      "${AM_PROJECT_ROOT}"
         ${_fmt_arg}
         ${_excl_args}
     )
