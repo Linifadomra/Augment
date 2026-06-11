@@ -37,8 +37,8 @@ def _pack_func(st, f):
 def _pack_struct(st, s):
     b = bytearray(struct.pack("<II", s["size"], len(s["fields"])))
     for fl in s["fields"]:
-        b += struct.pack("<IIIiI", st.add(fl["name"]), fl["offset"], st.add(fl["kind"]),
-                         fl.get("len", -1), st.add(fl.get("view")))
+        b += struct.pack("<IiIiI", st.add(fl["name"]), fl["offset"], st.add(fl["kind"]),
+                        fl.get("len", -1), st.add(fl.get("view") or ""))
     return bytes(b)
 
 def _pack_enum(st, e):
@@ -142,7 +142,7 @@ class Reader:
             size, nfields = struct.unpack_from("<II", self.b, p); q = p + 8
             fields = []
             for _ in range(nfields):
-                no, off, ko, ln, vo = struct.unpack_from("<IIIiI", self.b, q); q += 20
+                no, off, ko, ln, vo = struct.unpack_from("<IiIiI", self.b, q); q += 20
                 fields.append({"name": self._s(no), "offset": off, "kind": self._s(ko),
                                "len": ln, "view": self._s(vo)})
             return {"size": size, "fields": fields}
