@@ -10,8 +10,7 @@ import sys
 from typing import Dict, Optional
 
 from extractor.binary.interface import DebugInfoBackend
-
-_DWARFDUMP = shutil.which("llvm-dwarfdump") or shutil.which("dwarfdump")
+from extractor.utility.dependencies import dwarf_dump
 
 _DIE_RE  = re.compile(r'^(0x[0-9a-fA-F]+):\s*(DW_TAG_\w+)')
 _ATTR_RE = re.compile(r'^\s+(DW_AT_\w+)\s*\((.*)\)\s*$')
@@ -37,11 +36,8 @@ class DwarfBackend(DebugInfoBackend):
     name = "dwarf"
 
     def extract_rvas(self, binary_path: str) -> Dict[str, int]:
-        if not _DWARFDUMP:
-            sys.exit("dwarf backend: requires llvm-dwarfdump or dwarfdump")
-
         proc = subprocess.Popen(
-            [_DWARFDUMP, "--debug-info", binary_path],
+            [dwarf_dump, "--debug-info", binary_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
