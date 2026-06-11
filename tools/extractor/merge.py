@@ -5,6 +5,7 @@ import re
 
 _ANON_NS = re.compile(r'\(anonymous namespace\)::')
 _STRIP_ARGS = re.compile(r'(?<!operator)\(.*')
+_MSVC_CLEANUP = re.compile(r'\b(public:|private:|protected:|__cdecl|__stdcall|__thiscall|__vectorcall|__ptr64)\b')
 _BUILTIN_EXCLUSIONS = (
     "struct (unnamed",
     "class (unnamed",
@@ -40,8 +41,21 @@ def _is_excluded(flat: str, extra_prefixes: tuple) -> bool:
 def _clean_flat(demangled: str) -> str:
     s = _ANON_NS.sub('', demangled)
     s = _STRIP_ARGS.sub('', s)
+    s = _MSVC_CLEANUP.sub('', s)
+    
+    s = s.strip()
+    if " " in s and "::" in s:
+        parts = s.split()
+        for part in reversed(parts):
+            if "::" in part:
+                s = part
+                break
+
     return s.strip()
 
+
+def _normalize_for_matching(name: str) -> str:
+    return name.replace("::", "").replace("_", "").replace(" ", "").strip()
 
 def merge(
     ast: Dict[str, List[dict]],
@@ -67,17 +81,54 @@ def merge(
 def _demangle_batch(mangled: List[str]) -> Dict[str, str]:
     if not mangled:
         return {}
-    try:
-        result = subprocess.run(
-            ["c++filt", *mangled],
-            capture_output=True, text=True, timeout=30,
-        )
-        lines = result.stdout.splitlines()
-        if len(lines) == len(mangled):
-            return dict(zip(mangled, lines))
-    except Exception:
-        pass
-    return {m: m.lstrip("_") for m in mangled}
+    # Lightweight MSVC demangler for decorated names like
+    #   ?method@Class@@...  ->  Class::method
+    def _msvc_demangle_one(name: str) -> str:
+        if not name or not name.startswith("?"):
+            return name
+        try:
+            body = name[1:]
+            head = body.split('@@', 1)[0]
+            parts = head.split('@')
+            if not parts:
+                return name
+            fn = parts[0]
+            scopes = [p for p in parts[1:] if p]
+            if not scopes:
+                return fn
+            scopes_rev = list(reversed(scopes))
+            return '::'.join(scopes_rev + [fn])
+        except Exception:
+            return name
+
+    for binary in ["llvm-cxxfilt", "c++filt"]:
+        try:
+            result = subprocess.run(
+                [binary, *mangled],
+                capture_output=True, text=True, timeout=30,
+            )
+            lines = result.stdout.splitlines()
+            if len(lines) == len(mangled):
+                mapping = dict(zip(mangled, lines))
+                # If the external demangler returned the inputs unchanged for
+                # MSVC-decorated names, apply the MSVC fallback for those
+                # entries so we get a useful demangled form for matching.
+                for i, m in enumerate(mangled):
+                    out = mapping.get(m, "")
+                    if m.startswith("?") and out == m:
+                        mapping[m] = _msvc_demangle_one(m)
+                return mapping
+        except Exception:
+            pass
+
+    # Final fallback: best-effort mapping without external tools
+    mapping: Dict[str, str] = {m: m.lstrip("_") for m in mangled}
+    for m in mangled:
+        if m.startswith("?"):
+            dm = _msvc_demangle_one(m)
+            if dm and dm != m:
+                mapping[m] = dm
+    return mapping
 
 
 def _apply_flat_names(functions: List[dict], exclude_prefixes: tuple) -> None:
@@ -85,7 +136,9 @@ def _apply_flat_names(functions: List[dict], exclude_prefixes: tuple) -> None:
     dm = _demangle_batch(mangled)
     to_remove = []
     for i, fn in enumerate(functions):
-        flat = _clean_flat(dm.get(fn["mangled"], fn["mangled"].lstrip("_")))
+        # prefer demangled output then fall back to original without leading underscore
+        dem = dm.get(fn["mangled"], fn["mangled"].lstrip("_"))
+        flat = _clean_flat(dem)
         if _is_excluded(flat, exclude_prefixes):
             to_remove.append(i)
         else:
@@ -104,20 +157,117 @@ def _merge_functions(
     exclude_prefixes: tuple,
 ) -> List[dict]:
     out: List[dict] = []
-    consumed: set   = set()
+    consumed_rva_keys: set = set()
+    consumed_rva_values: set = set()
+
+    rva_keys = list(rva_map.keys())
+    rva_dm = _demangle_batch(rva_keys)
+    
+    clean_rva_lookup = {}
+    for k in rva_keys:
+        if rva_map[k] is None:
+            continue
+        
+        raw_norm = _normalize_for_matching(_clean_flat(k))
+        dm_norm = _normalize_for_matching(_clean_flat(rva_dm.get(k, k)))
+        
+        clean_rva_lookup[raw_norm] = (k, rva_map[k])
+        clean_rva_lookup[dm_norm] = (k, rva_map[k])
+
+    ast_mangled = [fn.get("mangled", "") for fn in ast_fns if fn.get("mangled")]
+    ast_dm = _demangle_batch(ast_mangled)
+
     for fn in ast_fns:
         if _is_generated_artifact(fn):
             continue
         mangled    = fn.get("mangled", "")
-        rva_int    = rva_map.get(mangled)
-        record     = dict(fn)
+        rva_int    = None
+        used_key   = None
+        
+        if mangled and mangled in rva_map:
+            rva_int = rva_map.get(mangled)
+            used_key = mangled
+        
+        if rva_int is None and mangled:
+            try:
+                clean = _normalize_for_matching(_clean_flat(ast_dm.get(mangled, mangled)))
+                if clean in clean_rva_lookup:
+                    used_key, rva_int = clean_rva_lookup[clean]
+            except Exception:
+                pass
+            
+        detected_self: Optional[str] = None
+        if not fn.get("member") and fn.get("args"):
+            first_arg = fn["args"][0]
+            if first_arg.get("name") == "actor" or first_arg.get("kind") == "ptr":
+                base_name = fn.get("flat") or fn.get("mangled") or ""
+                m = re.match(r"(?P<prefix>[^_]+)_(?P<method>.+)$", base_name)
+                if m:
+                    prefix = m.group("prefix")
+                    method = m.group("method")
+                    for cand in (prefix + "_c", prefix):
+                        target_clean = _normalize_for_matching(f"{cand}_{method}")
+                        if target_clean in clean_rva_lookup:
+                            detected_self = cand
+                            if used_key is None:
+                                used_key, rva_int = clean_rva_lookup[target_clean]
+                            break
+
+        record = dict(fn)
+        if detected_self:
+            record["member"] = True
+            record["self_view"] = detected_self
+            args = list(fn.get("args", []))
+            if args:
+                args = args[1:]
+            record["args"] = args
+
         record["rva"] = _rva_hex(rva_int) if rva_int is not None else None
+        
+        if used_key:
+            if re.match(r'^(_Z|\?|@)', used_key):
+                record["mangled"] = used_key
+            elif rva_int is not None:
+                for k2, v2 in rva_map.items():
+                    if v2 == rva_int and re.match(r'^(_Z|\?|@)', k2):
+                        record["mangled"] = k2
+                        break
+
+        record["loc"] = (
+            record["loc"].replace("\\", "/")
+            if isinstance(record.get("loc"), str)
+            else record.get("loc")
+        )
+
         out.append(record)
-        consumed.add(mangled)
-    for mangled, rva_int in rva_map.items():
-        if mangled in consumed:
+
+        if used_key:
+            consumed_rva_keys.add(used_key)
+        if rva_int is not None:
+            consumed_rva_values.add(rva_int)
+
+    rva_to_keys: Dict[int, List[str]] = {}
+    for k, v in rva_map.items():
+        if v is not None:
+            rva_to_keys.setdefault(v, []).append(k)
+
+    for rva_int, keys in rva_to_keys.items():
+        if rva_int in consumed_rva_values:
             continue
-        out.append(_opaque_stub(mangled, rva_int))
+        chosen: Optional[str] = None
+        for k in keys:
+            if '::' in k and not k.endswith('::'):
+                chosen = k
+                break
+        if not chosen:
+            for k in keys:
+                if '_c' in k or '::' in k:
+                    chosen = k
+                    break
+        if not chosen:
+            chosen = keys[0]
+        out.append(_opaque_stub(chosen, rva_int))
+        
     return out
 
 

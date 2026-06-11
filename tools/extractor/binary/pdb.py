@@ -122,47 +122,15 @@ class PdbBackend(DebugInfoBackend):
                 "\\VC\\Tools\\Llvm\\x64\\bin\\"
             )
 
-        proc = subprocess.Popen(
+        result = subprocess.run(
             [_PDBUTIL, "dump", "-symbols", "-section-headers", binary_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
             text=True,
             encoding="utf-8",
             errors="ignore",
+            check=True,
         )
 
-        section_map: Dict[int, int] = {}
-        current_sec: Optional[int] = None
-        current_name: Optional[str] = None
-        result: Dict[str, int] = {}
-
-        for line in proc.stdout:
-            # --- section header parsing ---
-            m = _SEC_NUM_RE.search(line)
-            if m:
-                current_sec = int(m.group(1))
-                continue
-
-            if current_sec is not None:
-                m = _SEC_VA_RE.search(line)
-                if m:
-                    section_map[current_sec] = int(m.group(1), 16)
-                continue
-
-            # --- symbol parsing ---
-            m = _SYM_REC_RE.match(line)
-            if m:
-                kind, name = m.group(1), m.group(2) or ""
-                current_name = name if (kind in _PROC_KINDS and name) else None
-                continue
-
-            if current_name is not None:
-                m = _ADDR_RE.search(line)
-                if m:
-                    rva = _resolve_rva(m.group(1), m.group(2), section_map)
-                    if rva is not None and current_name not in result:
-                        result[current_name] = rva
-                    current_name = None
-
-        proc.wait()
-        return result
+        text = result.stdout
+        section_map = _parse_section_headers(text)
+        return _parse_function_rvas(text, section_map)
