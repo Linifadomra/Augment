@@ -87,6 +87,7 @@ def run(
     jobs: int | None = None,
     log_file: Optional[str] = None,
     verbose: bool = False,
+    exclude_prefixes: tuple[str, ...] = ()
 ) -> Dict:
     from extractor.logger import configure, get_logger
     configure(
@@ -171,7 +172,7 @@ def run(
     log.info("got %d RVA entries", len(rva_map))
 
     from extractor.merge import merge
-    manifest = merge(combined, rva_map)
+    manifest = merge(combined, rva_map, exclude_prefixes=exclude_prefixes)
 
     from extractor.output.pack import pack
     out = Path(output_path)
@@ -211,6 +212,9 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="extract",
         description="Extract a function/type manifest from a binary and its sources.",
     )
+    p.add_argument("--exclude-prefix", dest="exclude_prefixes",
+                action="append", default=[],
+                help="Exclude functions whose demangled name starts with this prefix (repeatable)")
     p.add_argument("--project-root", dest="project_root", default=None,
                 help="Project root directory for filtering system headers")
     p.add_argument("--binary",           required=True,
@@ -240,7 +244,8 @@ def main(argv: list | None = None) -> None:
         jobs=args.jobs,
         log_file=args.log_file,
         verbose=args.verbose,
-        project_root=args.project_root
+        project_root=args.project_root,
+        exclude_prefixes=tuple(args.exclude_prefixes)
     )
 
 if __name__ == "__main__":
