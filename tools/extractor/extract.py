@@ -217,7 +217,7 @@ def phase1(
         json.dump(combined, f, indent=2)
 
     summary = (
-        f"[extract] phase1: {len(combined['functions'])} fns, "
+        f"[extract] Phase 1: {len(combined['functions'])} fns, "
         f"{len(combined['structs'])} structs, "
         f"{len(combined['enums'])} enums, "
         f"{len(combined['typedefs'])} typedefs "
@@ -281,7 +281,7 @@ def phase2(
         f.write(pack(manifest))
 
     summary = (
-        f"[extract] phase2: {len(manifest['functions'])} fns "
+        f"[extract] Phase 2: {len(manifest['functions'])} fns "
         f"({sum(1 for fn in manifest['functions'] if fn['rva'] is not None)} with RVA), "
         f"{len(manifest['structs'])} structs, "
         f"{len(manifest['enums'])} enums, "

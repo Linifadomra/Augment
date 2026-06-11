@@ -201,24 +201,39 @@ extern "C" AUGMENT_API void* augment_make_closure(const char* symbol) {
     return c->code;
 }
 
-extern "C" AUGMENT_API void augment_call(const char* symbol, void** args, unsigned nargs) {
-    (void)nargs;
+extern "C" AUGMENT_API void augment_call(const char* symbol, void** args, unsigned nargs, int instance_index) {
     void* fn = augment::plat::sym_resolve(symbol);
-    if (!fn)
-        return;
+    if (!fn) return;
+
     auto it = sig_table().find(symbol);
-    if (it == sig_table().end())
-        return;
+    if (it == sig_table().end()) return;
     Signature& sig = it->second;
 
+    void* resolved_self = nullptr;
+    void** actual_args  = args;
+    unsigned actual_argc = static_cast<unsigned>(sig.atypes.size());
+
+    if (sig.is_member && nargs + 1 == actual_argc) {
+        const char* self_view = augment_fn_self_view(symbol);
+        if (!self_view) return;
+        resolved_self = augment_get_instance(self_view, instance_index);
+        if (!resolved_self) return;
+
+        static thread_local void* tl_args[64];
+        tl_args[0] = &resolved_self;
+        for (unsigned i = 0; i < nargs; ++i)
+            tl_args[i + 1] = args[i];
+        actual_args = tl_args;
+    }
+
     ffi_cif cif;
-    if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, static_cast<unsigned>(sig.atypes.size()),
+    if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, actual_argc,
                      sig.rtype, sig.atypes.data()) != FFI_OK)
         return;
 
     char retbuf[64];
     void* ret = (sig.rtype == &ffi_type_void) ? nullptr : static_cast<void*>(retbuf);
-    ffi_call(&cif, reinterpret_cast<void (*)()>(fn), ret, args);
+    ffi_call(&cif, reinterpret_cast<void (*)()>(fn), ret, actual_args);
 }
 
 extern "C" AUGMENT_API void augment_register_instance(const char* class_name, void* ptr) {
