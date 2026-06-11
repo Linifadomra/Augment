@@ -121,6 +121,7 @@ def phase1(
     log_file: Optional[str] = None,
     verbose: bool = False,
     exclude_prefixes: tuple[str, ...] = (),
+    exclude_paths: tuple[str, ...] = ()
 ) -> Dict:
     """
     Walk the source tree with libclang, write ast_manifest.json, and
@@ -243,6 +244,7 @@ def phase2(
     log_file: Optional[str] = None,
     verbose: bool = False,
     exclude_prefixes: tuple[str, ...] = (),
+    exclude_paths: tuple[str, ...] = ()
 ) -> Dict:
     """
     Load the ast_manifest.json produced by phase1, extract RVAs from the
@@ -303,6 +305,9 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
                    help="Write structured log output to this file")
     p.add_argument("--verbose", "-v", action="store_true", default=False,
                    help="Set log level to DEBUG (very noisy; pair with --log-file)")
+    p.add_argument("--exclude-path", dest="exclude_paths",
+               action="append", default=[],
+               help="Exclude any cursor whose path contains this fragment (repeatable)")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -355,6 +360,7 @@ def main(argv: list | None = None) -> None:
             log_file=args.log_file,
             verbose=args.verbose,
             exclude_prefixes=tuple(args.exclude_prefixes),
+            exclude_paths=tuple(args.exclude_paths)
         )
 
     elif args.subcommand == "phase2":
@@ -366,6 +372,7 @@ def main(argv: list | None = None) -> None:
             log_file=args.log_file,
             verbose=args.verbose,
             exclude_prefixes=tuple(args.exclude_prefixes),
+            exclude_paths=tuple(args.exclude_paths)
         )
 
 if __name__ == "__main__":

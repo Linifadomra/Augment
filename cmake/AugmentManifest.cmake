@@ -6,7 +6,7 @@ endif()
 function(augment_manifest)
     cmake_parse_arguments(AM "SEPARATE_TARGET"
         "TARGET;OUTPUT;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT"
-        "EXCLUDE;EXCLUDE_PREFIX"
+        "EXCLUDE;EXCLUDE_PREFIX;EXCLUDE_PATH"
         ${ARGN})
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -34,6 +34,11 @@ function(augment_manifest)
         list(JOIN AM_EXCLUDE_PREFIX "\n" _excl_prefix_content)
         file(WRITE "${_excl_prefix_file}" "${_excl_prefix_content}\n")
         list(APPEND _excl_args "--exclude-prefix-file" "${_excl_prefix_file}")
+    endif()
+    if(AM_EXCLUDE_PATH)
+        foreach(_frag ${AM_EXCLUDE_PATH})
+            list(APPEND _excl_args "--exclude-path" "${_frag}")
+        endforeach()
     endif()
 
     set(_target_bin $<TARGET_FILE:${AM_TARGET}>)

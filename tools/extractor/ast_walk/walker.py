@@ -8,6 +8,7 @@ Walk a translation unit with libclang and [extract]
   - typedefs
 """
 from __future__ import annotations
+from collections.abc import Iterable
 
 import re
 from typing import Any, Dict, List, Optional
@@ -32,6 +33,17 @@ def _resource_dir() -> str:
 
 _PROJECT_ROOT: Optional[Path] = None
 
+BUILTIN_FOLDER_EXCLUSIONS = {
+    "augment/",  # Augment
+    "dobby/",    # Dobby
+    "_deps/",    # CPM Dependencies
+}
+_EXTRA_FOLDER_EXCLUSIONS: set[str] = set()
+
+
+def add_folder_exclusions(paths: Iterable[str]) -> None:
+    _EXTRA_FOLDER_EXCLUSIONS.update(paths)
+
 
 def set_project_root(path: str) -> None:
     global _PROJECT_ROOT
@@ -47,7 +59,6 @@ def _is_system_cursor(cursor: _cx.Cursor) -> bool:
             return True
     except AttributeError:
         pass
-
     try:
         file_resolved = Path(f.name).resolve()
     except (ValueError, OSError):
@@ -56,12 +67,20 @@ def _is_system_cursor(cursor: _cx.Cursor) -> bool:
     root = _PROJECT_ROOT
     if root is None:
         return False
-
     try:
-        file_resolved.relative_to(root)
-        return False
+        rel = file_resolved.relative_to(root)
     except ValueError:
         return True
+
+    rel_str = rel.as_posix()
+    for excl in BUILTIN_FOLDER_EXCLUSIONS:
+        if excl in rel_str:
+            return True
+    for excl in _EXTRA_FOLDER_EXCLUSIONS:
+        if excl in rel_str:
+            return True
+
+    return False
 
 
 def _find_class_parent(cursor: _cx.Cursor) -> Optional[_cx.Cursor]:
