@@ -62,16 +62,12 @@ def _extract_flags(entry: dict, file_path: str) -> List[str]:
     return _strip_non_flags(argv, file_path)
 
 def _strip_non_flags(argv: List[str], file_path: str) -> List[str]:
-    """
-    Remove the compiler executable, output flag pairs, and the source
-    file argument from an argument vector, returning only the flags.
-    """
     flags: List[str] = []
     skip_next = False
+    file_path_obj = Path(file_path)
 
     for i, arg in enumerate(argv):
         if i == 0:
-            # compiler executable
             continue
         if skip_next:
             skip_next = False
@@ -80,10 +76,15 @@ def _strip_non_flags(argv: List[str], file_path: str) -> List[str]:
             skip_next = True
             continue
         if arg.startswith("-o") and len(arg) > 2:
-            # -oFILE form
             continue
-        if arg == file_path or Path(arg).resolve() == Path(file_path).resolve():
+        if arg in ("-c", "-MD", "-MMD", "-MP"):
             continue
+        if arg in ("-MF", "-MT", "-MQ"):
+            skip_next = True
+            continue
+        if not arg.startswith("-"):
+            arg_path = Path(arg)
+            if arg_path.name == file_path_obj.name and arg_path.suffix in (".c", ".cpp", ".cc", ".cxx"):
+                continue
         flags.append(arg)
-
     return flags

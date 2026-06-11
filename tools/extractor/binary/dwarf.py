@@ -1,63 +1,37 @@
 """
 extractor/binary/dwarf.py
-
-DWARF backend: shells out to llvm-dwarfdump, parses DIEs inline, and
-returns {mangled_name: rva_int} for every subprogram with DW_AT_low_pc.
 """
-
 from __future__ import annotations
 
 import re
 import shutil
 import subprocess
 import sys
-from typing import Dict
+from typing import Dict, Optional
 
 from extractor.binary.interface import DebugInfoBackend
 
 _DWARFDUMP = shutil.which("llvm-dwarfdump") or shutil.which("dwarfdump")
 
-_DIE_RE  = re.compile(r'^(0x[0-9a-fA-F]+):(\s*)(DW_TAG_\w+)')
+_DIE_RE  = re.compile(r'^(0x[0-9a-fA-F]+):\s*(DW_TAG_\w+)')
 _ATTR_RE = re.compile(r'^\s+(DW_AT_\w+)\s*\((.*)\)\s*$')
+_QUOTED  = re.compile(r'"([^"]*)"')
+_ADDR_RE = re.compile(r'(0x[0-9a-fA-F]+)')
 
-class _Die:
-    __slots__ = ("tag", "indent", "attrs", "children")
-
-    def __init__(self, tag: str, indent: int):
-        self.tag = tag
-        self.indent = indent
-        self.attrs: dict = {}
-        self.children: list = []
-
-    def attr(self, name: str):
-        return self.attrs.get(name)
 
 def _attr_value(raw: str) -> str:
-    m = re.search(r'"([^"]*)"', raw)
+    m = _QUOTED.search(raw)
     return m.group(1) if m else raw.strip()
 
-def _parse_dies(text: str) -> list:
-    roots: list = []
-    stack: list = []
-    cur = None
-    for line in text.splitlines():
-        m = _DIE_RE.match(line)
-        if m:
-            indent = len(m.group(2))
-            cur = _Die(m.group(3), indent)
-            while stack and stack[-1].indent >= indent:
-                stack.pop()
-            if stack:
-                stack[-1].children.append(cur)
-            else:
-                roots.append(cur)
-            stack.append(cur)
-            continue
-        if cur is not None:
-            am = _ATTR_RE.match(line)
-            if am:
-                cur.attrs[am.group(1)] = _attr_value(am.group(2))
-    return roots
+
+def _parse_addr(raw: str) -> Optional[int]:
+    """Extract the leading hex address; returns None for zero (unlinked)."""
+    m = _ADDR_RE.search(raw)
+    if not m:
+        return None
+    val = int(m.group(1), 16)
+    return val if val != 0 else None
+
 
 class DwarfBackend(DebugInfoBackend):
     name = "dwarf"
@@ -66,28 +40,83 @@ class DwarfBackend(DebugInfoBackend):
         if not _DWARFDUMP:
             sys.exit("dwarf backend: requires llvm-dwarfdump or dwarfdump")
 
-        text = subprocess.run(
+        proc = subprocess.Popen(
             [_DWARFDUMP, "--debug-info", binary_path],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
-        ).stdout
+        )
 
         result: Dict[str, int] = {}
 
-        def visit(die: _Die) -> None:
-            if die.tag == "DW_TAG_subprogram":
-                mangled = die.attr("DW_AT_linkage_name")
-                low_pc  = die.attr("DW_AT_low_pc")
-                if mangled and low_pc:
-                    rva = int(low_pc, 0)
-                    # best-pick
-                    if mangled not in result or rva > result[mangled]:
-                        result[mangled] = rva
-            for child in die.children:
-                visit(child)
+        decl_mangles: Dict[int, str] = {} # offset -> mangled
+        pending: list[tuple[int, int]] = [] # (spec_offset, low_pc)
 
-        for root in _parse_dies(text):
-            visit(root)
+        cur_offset:   Optional[int] = None
+        in_subprogram = False
+        is_decl       = False
+        mangled:      Optional[str] = None
+        low_pc:       Optional[int] = None
+        spec_offset:  Optional[int] = None
 
+        def _flush() -> None:
+            nonlocal mangled, low_pc, spec_offset, is_decl
+
+            if spec_offset is not None and low_pc is not None:
+                decl_name = decl_mangles.get(spec_offset)
+                if decl_name and decl_name not in result:
+                    result[decl_name] = low_pc
+                else:
+                    pending.append((spec_offset, low_pc))
+
+            elif not is_decl and mangled and low_pc is not None:
+                if mangled not in result:
+                    result[mangled] = low_pc
+
+            elif is_decl and mangled and cur_offset is not None:
+                decl_mangles[cur_offset] = mangled
+
+            mangled = low_pc = spec_offset = None
+            is_decl = False
+
+        for line in proc.stdout:
+            die_m = _DIE_RE.match(line)
+            if die_m:
+                if in_subprogram:
+                    _flush()
+                cur_offset = int(die_m.group(1), 16)
+                tag = die_m.group(2)
+                in_subprogram = (tag == "DW_TAG_subprogram")
+                continue
+
+            if not in_subprogram:
+                continue
+
+            attr_m = _ATTR_RE.match(line)
+            if not attr_m:
+                continue
+
+            attr, raw_val = attr_m.group(1), attr_m.group(2)
+            val = _attr_value(raw_val)
+
+            if attr == "DW_AT_linkage_name":
+                mangled = val
+            elif attr == "DW_AT_name" and mangled is None:
+                mangled = val
+            elif attr == "DW_AT_low_pc":
+                low_pc = _parse_addr(raw_val)
+            elif attr == "DW_AT_declaration":
+                is_decl = True
+            elif attr == "DW_AT_specification":
+                spec_offset = _parse_addr(raw_val)
+
+        _flush()
+
+        for spec_off, pc in pending:
+            decl_name = decl_mangles.get(spec_off)
+            if decl_name and decl_name not in result:
+                result[decl_name] = pc
+
+        proc.wait()
         return result

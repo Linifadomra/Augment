@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from extractor.ast.compile_db import load
+from extractor.ast_walk.compile_db import load
 
 def _write_db(tmp_path: Path, entries: list) -> Path:
     p = tmp_path / "compile_commands.json"

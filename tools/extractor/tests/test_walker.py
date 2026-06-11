@@ -51,7 +51,7 @@ import pytest
 pytest.importorskip("clang.cindex", reason="libclang not installed")
 import clang.cindex as _cx
 
-from extractor.ast.walker import walk
+from extractor.ast_walk.walker import walk
 
 _FLAGS = ["-std=c++17", "-x", "c++"]
 _FAKE_PATH = "/fake/test.cpp"

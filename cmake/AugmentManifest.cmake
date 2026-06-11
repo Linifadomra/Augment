@@ -35,17 +35,21 @@ function(augment_manifest)
     set(_target_bin $<TARGET_FILE:${AM_TARGET}>)
 
     if(WIN32 AND MSVC)
-        target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:/Zi>)
+        target_compile_options(${AM_TARGET} PRIVATE /Zi)
         set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
         set(_fmt_arg "--debug-format" "pdb")
     else()
-        target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:-g>)
+        target_compile_options(${AM_TARGET} PRIVATE -g)
         set(_extract_src "${_target_bin}")
         set(_fmt_arg "--debug-format" "dwarf")
     endif()
 
+    cmake_path(GET AUGMENT_EXTRACT_SCRIPT PARENT_PATH _extract_script_dir)
+    cmake_path(GET _extract_script_dir PARENT_PATH _extract_tools_dir)
+
     set(_extract_cmd
-        "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
+        "${CMAKE_COMMAND}" -E env "PYTHONPATH=${_extract_tools_dir}"
+        "${Python3_EXECUTABLE}" -u "${AUGMENT_EXTRACT_SCRIPT}"
         "--binary"            "${_extract_src}"
         "--compile-commands"  "${AM_COMPILE_COMMANDS}"
         "--output"            "${AM_OUTPUT}"
@@ -54,7 +58,7 @@ function(augment_manifest)
     )
 
     cmake_path(REPLACE_EXTENSION AM_OUTPUT LAST_ONLY ".json" OUTPUT_VARIABLE _json_out)
-    cmake_path(REPLACE_EXTENSION AM_OUTPUT LAST_ONLY ".agmf" OUTPUT_VARIABLE _agmf_out)
+    set(_agmf_out "${AM_OUTPUT}") 
 
     if(AM_SEPARATE_TARGET)
         if(APPLE)
@@ -64,6 +68,7 @@ function(augment_manifest)
                 COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
                 COMMAND ${_extract_cmd} "--binary" "${_dbg}"
                 DEPENDS "${_target_bin}"
+                USES_TERMINAL
                 VERBATIM
             )
         else()
@@ -76,6 +81,7 @@ function(augment_manifest)
                 COMMAND ${_extract_cmd}
                 ${_strip_cmd}
                 DEPENDS "${_target_bin}"
+                USES_TERMINAL
                 VERBATIM
             )
         endif()
@@ -89,16 +95,19 @@ function(augment_manifest)
             add_custom_command(TARGET ${AM_TARGET} POST_BUILD
                 COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
                 COMMAND ${_extract_cmd} "--binary" "${_dbg}"
+                USES_TERMINAL
                 VERBATIM
             )
         else()
             add_custom_command(TARGET ${AM_TARGET} POST_BUILD
                 COMMAND ${_extract_cmd}
+                USES_TERMINAL
                 VERBATIM
             )
             if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
                 add_custom_command(TARGET ${AM_TARGET} POST_BUILD
                     COMMAND ${CMAKE_OBJCOPY} --strip-debug "${_target_bin}"
+                    USES_TERMINAL
                     VERBATIM
                 )
             endif()

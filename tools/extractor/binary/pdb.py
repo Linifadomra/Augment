@@ -1,13 +1,5 @@
 """
 extractor/binary/pdb.py
-
-PDB backend: shells out to llvm-pdbutil, parses the output inline, and
-returns {mangled_name: rva_int} for every function that has a resolvable
-non-zero address.
-
-Intentionally minimal — only the section-header and S_GPROC32/S_LPROC32
-paths from the pdbutil dump are needed. No type resolution, no structs,
-no field lists.
 """
 from __future__ import annotations
 
@@ -110,13 +102,47 @@ class PdbBackend(DebugInfoBackend):
         if not _PDBUTIL:
             sys.exit("pdb backend: requires llvm-pdbutil")
 
-        text = subprocess.run(
+        proc = subprocess.Popen(
             [_PDBUTIL, "dump", "-symbols", "-section-headers", binary_path],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="ignore",
-        ).stdout
+        )
 
-        section_map = _parse_section_headers(text)
-        return _parse_function_rvas(text, section_map)
+        section_map: Dict[int, int] = {}
+        current_sec: Optional[int] = None
+        current_name: Optional[str] = None
+        result: Dict[str, int] = {}
+
+        for line in proc.stdout:
+            # --- section header parsing ---
+            m = _SEC_NUM_RE.search(line)
+            if m:
+                current_sec = int(m.group(1))
+                continue
+
+            if current_sec is not None:
+                m = _SEC_VA_RE.search(line)
+                if m:
+                    section_map[current_sec] = int(m.group(1), 16)
+                continue
+
+            # --- symbol parsing ---
+            m = _SYM_REC_RE.match(line)
+            if m:
+                kind, name = m.group(1), m.group(2) or ""
+                current_name = name if (kind in _PROC_KINDS and name) else None
+                continue
+
+            if current_name is not None:
+                m = _ADDR_RE.search(line)
+                if m:
+                    rva = _resolve_rva(m.group(1), m.group(2), section_map)
+                    if rva is not None and current_name not in result:
+                        result[current_name] = rva
+                    current_name = None
+
+        proc.wait()
+        return result

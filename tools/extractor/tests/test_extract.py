@@ -25,7 +25,7 @@ Checks:
 """
 from __future__ import annotations
 
-import extractor.output.extract
+import extractor.extract
 
 import json
 import sys
@@ -93,9 +93,9 @@ def _patch_all(tmp_path, *, flag_map=None, ast_side_effect=None,
         walk_mock = MagicMock(side_effect=[_AST_A, _AST_B])
 
     patches = [
-        patch("extractor.output.extract._require_libclang"),
-        patch("extractor.ast.compile_db.load", return_value=fm),
-        patch("extractor.ast.walker.walk",     walk_mock),
+        patch("extractor.extract._require_libclang"),
+        patch("extractor.ast_walk.compile_db.load", return_value=fm),
+        patch("extractor.ast_walk.walker.walk",     walk_mock),
         patch("extractor.merge.merge",         return_value=man),
         patch("clang.cindex.Index.create",     return_value=MagicMock()),
     ]
@@ -110,7 +110,7 @@ def _run_with_patches(tmp_path, extra_kwargs=None, **patch_kwargs):
     from contextlib import ExitStack
     with ExitStack() as stack:
         mocks = [stack.enter_context(p) for p in patches]
-        from extractor.output.extract import run
+        from extractor.extract import run
         result = run(
             binary_path="/fake/lib.so",
             compile_commands_path="/fake/compile_commands.json",
@@ -165,7 +165,7 @@ def test_output_dirs_created(tmp_path):
     with ExitStack() as stack:
         for p in patches:
             stack.enter_context(p)
-        from extractor.output.extract import run
+        from extractor.extract import run
         run(
             binary_path="/fake/lib.so",
             compile_commands_path="/fake/compile_commands.json",
@@ -180,7 +180,7 @@ def test_pdb_extension_selects_pdb_backend(tmp_path):
     with ExitStack() as stack:
         for p in patches:
             stack.enter_context(p)
-        from extractor.output.extract import run
+        from extractor.extract import run
         run(
             binary_path="/fake/lib.pdb",
             compile_commands_path="/fake/compile_commands.json",
@@ -197,7 +197,7 @@ def test_debug_format_dwarf_explicit(tmp_path):
     with ExitStack() as stack:
         for p in patches:
             stack.enter_context(p)
-        from extractor.output.extract import run
+        from extractor.extract import run
         run(
             binary_path="/fake/lib.so",
             compile_commands_path="/fake/compile_commands.json",
@@ -213,7 +213,7 @@ def test_unknown_debug_format_exits(tmp_path):
         with ExitStack() as stack:
             for p in patches:
                 stack.enter_context(p)
-            from extractor.output.extract import run
+            from extractor.extract import run
             run(
                 binary_path="/fake/lib.so",
                 compile_commands_path="/fake/compile_commands.json",
@@ -222,10 +222,10 @@ def test_unknown_debug_format_exits(tmp_path):
             )
 
 def test_missing_libclang_exits():
-    with patch("extractor.output.extract._require_libclang",
-               side_effect=SystemExit("extract: requires the libclang")):
+    with patch("extractor.extract._require_libclang",
+               side_effect=SystemExit("[extract] requires libclang")):
         with pytest.raises(SystemExit, match="libclang"):
-            from extractor.output.extract import run
+            from extractor.extract import run
             run("/fake/lib.so", "/fake/cc.json", "/fake/out.json")
 
 
@@ -245,7 +245,7 @@ def test_empty_compile_commands_warns(tmp_path, capsys):
     with ExitStack() as stack:
         for p in patches:
             stack.enter_context(p)
-        from extractor.output.extract import run
+        from extractor.extract import run
         run(
             binary_path="/fake/lib.so",
             compile_commands_path="/fake/compile_commands.json",
@@ -261,7 +261,7 @@ def test_cli_passes_args(tmp_path):
     with ExitStack() as stack:
         for p in patches:
             stack.enter_context(p)
-        from extractor.output.extract import main
+        from extractor.extract import main
         main([
             "--binary",           "/fake/lib.so",
             "--compile-commands", "/fake/cc.json",
@@ -276,7 +276,7 @@ def test_cli_debug_format_arg(tmp_path):
     with ExitStack() as stack:
         for p in patches:
             stack.enter_context(p)
-        from extractor.output.extract import main
+        from extractor.extract import main
         main([
             "--binary",           "/fake/lib.so",
             "--compile-commands", "/fake/cc.json",

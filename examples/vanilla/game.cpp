@@ -2,6 +2,7 @@
 
 void Entity::die() { dead = true; }
 
+__attribute__((noinline))
 float Combat::calculateDamage(float base, float multiplier) {
     return base * multiplier;
 }
@@ -9,4 +10,4 @@ float Combat::calculateDamage(float base, float multiplier) {
 void Combat::applyDamage(Entity& target, float amount) {
     target.health -= amount;
     if (target.health <= 0.f) target.die();
-}
+} 

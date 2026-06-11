@@ -1,7 +1,7 @@
 """
 extractor/ast/walker.py
 
-Walk a translation unit with libclang and extract:
+Walk a translation unit with libclang and [extract]
   - structs / classes / unions  (fields, sizes)
   - functions / methods         (args, return type, mangled name)
   - enums                       (values)
@@ -16,6 +16,27 @@ try:
     import clang.cindex as _cx
 except ImportError:  # pragma: no cover
     raise ImportError("walker requires the libclang Python bindings: pip install libclang")
+
+import subprocess as _sp
+
+def _resource_dir() -> str:
+    try:
+        return _sp.run(
+            ["clang", "--print-resource-dir"],
+            capture_output=True, text=True, check=True
+        ).stdout.strip()
+    except Exception:
+        return ""
+
+def _is_system_cursor(cursor: _cx.Cursor) -> bool:
+    f = cursor.location.file
+    if not f:
+        return True
+    try:
+        return bool(_cx.conf.lib.clang_Location_isInSystemHeader(cursor.location))
+    except AttributeError:
+        import os
+        return not f.name.startswith(os.getcwd())
 
 def walk(
     source_path: str,
@@ -32,11 +53,15 @@ def walk(
             "typedefs":  [...],
         }
 
-    *index* is an optional ``clang.cindex.Index`` — pass one in when
+    *index* is an optional ``clang.cindex.Index``. Pass one in when
     walking many files so the global index is reused.
     """
     if index is None:
         index = _cx.Index.create()
+
+    rd = _resource_dir()
+    if rd:
+        flags = [f"-resource-dir={rd}"] + list(flags)
 
     tu = index.parse(
         source_path,
@@ -83,10 +108,7 @@ def walk(
             visit(child)
 
     for child in tu.cursor.get_children():
-        # Only walk cursors that originate in the file we asked to parse,
-        # not in transitively included headers.
-        if child.location.file and child.location.file.name == source_path:
-            visit(child)
+        visit(child)
 
     return {
         "structs":   structs,
@@ -168,6 +190,8 @@ def _struct_key(cursor: _cx.Cursor) -> str:
     return cursor.type.spelling or cursor.spelling
 
 def _visit_struct(cursor: _cx.Cursor, out: list, seen: set) -> None:
+    if _is_system_cursor(cursor):
+        return
     if not cursor.is_definition():
         return
     name = cursor.spelling
@@ -194,6 +218,8 @@ def _visit_struct(cursor: _cx.Cursor, out: list, seen: set) -> None:
     })
 
 def _visit_function(cursor: _cx.Cursor, out: list, seen: set) -> None:
+    if _is_system_cursor(cursor):
+        return
     mangled = cursor.mangled_name
     if not mangled or mangled in seen:
         return
@@ -288,11 +314,10 @@ def _flat(spelling: str, parent: Optional[_cx.Cursor]) -> str:
             base = f"{prefix}_{base}"
     return base.replace("::", "_").replace(" ", "")
 
-def _check_diagnostics(tu: Any, path: str) -> None:
+def _check_diagnostics(tu: Any, path: str) -> list[str]:
+    """
+    Return a list of error message strings for any Error/Fatal diagnostics.
+    """
     errors = [d for d in tu.diagnostics
               if d.severity >= _cx.Diagnostic.Error]
-    if errors:
-        msgs = "\n".join(f"  {d.spelling}" for d in errors[:5])
-        raise RuntimeError(
-            f"walker: parse errors in {path}:\n{msgs}"
-        )
+    return [d.spelling for d in errors]
