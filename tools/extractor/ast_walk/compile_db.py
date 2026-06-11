@@ -11,6 +11,15 @@ from typing import Dict, List
 
 import sys
 
+def _fix_flags(flags: list[str]) -> list[str]:
+    result = []
+    for tok in flags:
+        if tok.startswith('-include') and len(tok) > len('-include') and not tok.startswith('-include-'):
+            result.append('-include')
+            result.append(tok[len('-include'):])
+        else:
+            result.append(tok)
+    return result
 
 def _win_split(command: str) -> list[str]:
     import ctypes
@@ -146,11 +155,13 @@ def _extract_flags(entry: dict, file_path: str) -> List[str]:
         return []
 
     flags = _strip_non_flags(argv, file_path)
+    flags = _fix_flags(flags)
 
     if sys.platform == "win32":
         flags = _normalize_msvc_flags(flags)
 
     return flags
+
 
 def _strip_non_flags(argv: List[str], file_path: str) -> List[str]:
     flags: List[str] = []
@@ -175,7 +186,7 @@ def _strip_non_flags(argv: List[str], file_path: str) -> List[str]:
             continue
         if not arg.startswith("-"):
             arg_path = Path(arg)
-            if arg_path.name == file_path_obj.name and arg_path.suffix in (".c", ".cpp", ".cc", ".cxx"):
+            if arg_path.suffix in (".c", ".cpp", ".cc", ".cxx", ".h", ".hpp"):
                 continue
         flags.append(arg)
     return flags
