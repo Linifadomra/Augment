@@ -20,6 +20,7 @@ _BUILTIN_EXCLUSIONS = (
     "CodeGenBase",           # dobby
     "CodeMemBuffer",         # dobby
     "true>>>",
+    "_Augment",              # augment
     "augment",               # augment
     "std::",                 # standard lib
     "boost::",               # boost lib

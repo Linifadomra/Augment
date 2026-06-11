@@ -111,7 +111,7 @@ AUGMENT_API void augment_register_struct(const char* name, const char** member_k
 AUGMENT_API int augment_load_signatures(const char* path);
 AUGMENT_API int augment_field_offset(const char* field);
 AUGMENT_API void* augment_make_closure(const char* symbol);
-AUGMENT_API void augment_call(const char* symbol, void** args, unsigned nargs, int instance_index);
+AUGMENT_API void augment_call(const char* symbol, void** args, unsigned nargs, int instance_index = -1);
 #else
 inline void augment_register_signature(const char*, int, const char*, const char**, unsigned) {}
 inline void augment_register_struct(const char*, const char**, unsigned) {}
