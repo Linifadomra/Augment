@@ -26,6 +26,7 @@ from typing import Dict, List, Optional, Tuple
 
 _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
+
 def _require_libclang() -> None:
     try:
         import clang.cindex  # noqa: F401
@@ -52,7 +53,11 @@ def _walk_one(args: Tuple[str, List[str]]) -> dict:
     """
     Worker entry point: parse one translation unit and return its records.
     """
-    source_file, flags = args
+    source_file, flags, project_root = args
+
+    from extractor.ast_walk.walker import set_project_root, walk
+    set_project_root(project_root)
+
 
     from extractor.logger import get_logger
     log = get_logger("walker.worker")
@@ -113,11 +118,12 @@ def _progress_printer(counter: list, total: int, stop: threading.Event) -> None:
 def run(
     binary_path: str,
     compile_commands_path: str,
+    project_root: str,
     output_path: str,
     debug_format: str | None = None,
     jobs: int | None = None,
     log_file: Optional[str] = None,
-    verbose: bool = False,
+    verbose: bool = False
 ) -> Dict:
     from extractor.logger import configure, get_logger
     configure(
@@ -127,6 +133,9 @@ def run(
         enabled=bool(log_file or verbose),
     )
     log = get_logger("extract")
+
+    from extractor.ast_walk.walker import set_project_root
+    set_project_root(project_root)
 
     _require_libclang()
 
@@ -145,7 +154,8 @@ def run(
     seen: Dict[str, set] = {k: set() for k in combined}
 
     workers = jobs or round(os.cpu_count() / 2) or 1
-    items   = list(flag_map.items())
+    project_root = str(Path(compile_commands_path).resolve().parent.parent)
+    items = [(src, flags, project_root) for src, flags in flag_map.items()]
     total   = len(items)
 
     log.info("walking %d TUs with %d workers", total, workers)
@@ -264,6 +274,8 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="extract",
         description="Extract a function/type manifest from a binary and its sources.",
     )
+    p.add_argument("--project-root", dest="project_root", default=None,
+                help="Project root directory for filtering system headers")
     p.add_argument("--binary",           required=True,
                    help="Path to the compiled binary or .pdb file")
     p.add_argument("--compile-commands", required=True, dest="compile_commands",
@@ -291,6 +303,7 @@ def main(argv: list | None = None) -> None:
         jobs=args.jobs,
         log_file=args.log_file,
         verbose=args.verbose,
+        project_root=args.project_root
     )
 
 if __name__ == "__main__":

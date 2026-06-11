@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover
     raise ImportError("walker requires the libclang Python bindings: pip install libclang")
 
 import subprocess as _sp
+from pathlib import Path
 
 def _resource_dir() -> str:
     try:
@@ -28,15 +29,40 @@ def _resource_dir() -> str:
     except Exception:
         return ""
 
+
+_PROJECT_ROOT: Optional[Path] = None
+
+
+def set_project_root(path: str) -> None:
+    global _PROJECT_ROOT
+    _PROJECT_ROOT = Path(path).resolve()
+
+
 def _is_system_cursor(cursor: _cx.Cursor) -> bool:
     f = cursor.location.file
     if not f:
         return True
     try:
-        return bool(_cx.conf.lib.clang_Location_isInSystemHeader(cursor.location))
+        if _cx.conf.lib.clang_Location_isInSystemHeader(cursor.location):
+            return True
     except AttributeError:
-        import os
-        return not f.name.startswith(os.getcwd())
+        pass
+
+    try:
+        file_resolved = Path(f.name).resolve()
+    except (ValueError, OSError):
+        return True
+
+    root = _PROJECT_ROOT
+    if root is None:
+        return False
+
+    try:
+        file_resolved.relative_to(root)
+        return False
+    except ValueError:
+        return True
+
 
 def walk(
     source_path: str,
@@ -266,6 +292,8 @@ def _visit_function(cursor: _cx.Cursor, out: list, seen: set) -> None:
     })
 
 def _visit_enum(cursor: _cx.Cursor, out: list, seen: set) -> None:
+    if _is_system_cursor(cursor):
+        return
     if not cursor.is_definition():
         return
     name = cursor.spelling
@@ -290,6 +318,8 @@ def _visit_enum(cursor: _cx.Cursor, out: list, seen: set) -> None:
     out.append({"name": qualified, "owner": owner, "values": values})
 
 def _visit_typedef(cursor: _cx.Cursor, out: list, seen: set) -> None:
+    if _is_system_cursor(cursor):
+        return
     alias = cursor.spelling
     if not alias or alias in seen or _is_anonymous(alias):
         return

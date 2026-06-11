@@ -53,6 +53,7 @@ function(augment_manifest)
         "--binary"            "${_extract_src}"
         "--compile-commands"  "${AM_COMPILE_COMMANDS}"
         "--output"            "${AM_OUTPUT}"
+        "--project-root"      "${CMAKE_SOURCE_DIR}"
         ${_fmt_arg}
         ${_excl_args}
     )

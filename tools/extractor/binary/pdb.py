@@ -11,7 +11,22 @@ from typing import Dict, Optional, Tuple
 
 from extractor.binary.interface import DebugInfoBackend
 
-_PDBUTIL = shutil.which("llvm-pdbutil")
+def _find_pdbutil() -> str | None:
+    found = shutil.which("llvm-pdbutil")
+    if found:
+        return found
+    # VS-bundled llvm-pdbutil
+    patterns = [
+        r"C:\Program Files (x86)\Microsoft Visual Studio\*\*\VC\Tools\Llvm\x64\bin\llvm-pdbutil.EXE",
+        r"C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\Llvm\x64\bin\llvm-pdbutil.EXE",
+    ]
+    for pattern in patterns:
+        matches = glob.glob(pattern)
+        if matches:
+            return matches[-1]  # take the latest
+    return None
+
+_PDBUTIL = _find_pdbutil()
 
 # section header parsing
 # Matches:  SECTION HEADER #3
@@ -100,7 +115,12 @@ class PdbBackend(DebugInfoBackend):
 
     def extract_rvas(self, binary_path: str) -> Dict[str, int]:
         if not _PDBUTIL:
-            sys.exit("pdb backend: requires llvm-pdbutil")
+            sys.exit(
+                "pdb backend: llvm-pdbutil not found on PATH.\n"
+                "  Install LLVM and add it to PATH, or use the VS-bundled version:\n"
+                "  C:\\Program Files (x86)\\Microsoft Visual Studio\\<ver>\\<edition>"
+                "\\VC\\Tools\\Llvm\\x64\\bin\\"
+            )
 
         proc = subprocess.Popen(
             [_PDBUTIL, "dump", "-symbols", "-section-headers", binary_path],
