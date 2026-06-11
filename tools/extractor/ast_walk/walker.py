@@ -64,6 +64,18 @@ def _is_system_cursor(cursor: _cx.Cursor) -> bool:
         return True
 
 
+def _find_class_parent(cursor: _cx.Cursor) -> Optional[_cx.Cursor]:
+    parent = cursor.semantic_parent
+    while parent and parent.kind != _cx.CursorKind.TRANSLATION_UNIT:
+        if parent.kind in (_cx.CursorKind.CLASS_DECL,
+                           _cx.CursorKind.STRUCT_DECL,
+                           _cx.CursorKind.CLASS_TEMPLATE,
+                           _cx.CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION):
+            return parent
+        parent = parent.semantic_parent
+    return None
+
+
 def walk(
     source_path: str,
     flags: List[str],
@@ -94,7 +106,6 @@ def walk(
         args=flags,
         options=(
             _cx.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
-            | _cx.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
         ),
     )
 
@@ -243,6 +254,7 @@ def _visit_struct(cursor: _cx.Cursor, out: list, seen: set) -> None:
         "fields": fields,
     })
 
+
 def _visit_function(cursor: _cx.Cursor, out: list, seen: set) -> None:
     if _is_system_cursor(cursor):
         return
@@ -269,10 +281,9 @@ def _visit_function(cursor: _cx.Cursor, out: list, seen: set) -> None:
 
     self_view: Optional[str] = None
     if member:
-        parent = cursor.semantic_parent
-        if parent and parent.kind in (_cx.CursorKind.CLASS_DECL,
-                                       _cx.CursorKind.STRUCT_DECL):
-            self_view = parent.spelling or None
+        cls = _find_class_parent(cursor)
+        if cls:
+            self_view = cls.spelling or None
 
     loc = None
     if cursor.location.file:
@@ -290,6 +301,7 @@ def _visit_function(cursor: _cx.Cursor, out: list, seen: set) -> None:
         "ret":       ret,
         "args":      args,
     })
+
 
 def _visit_enum(cursor: _cx.Cursor, out: list, seen: set) -> None:
     if _is_system_cursor(cursor):
