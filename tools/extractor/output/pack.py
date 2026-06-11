@@ -66,24 +66,30 @@ _PACKERS = {"functions": _pack_func, "structs": _pack_struct, "enums": _pack_enu
             "globals": _pack_global, "typedefs": _pack_typedef}
 
 def pack(manifest):
+    from extractor.utility.spinner import Progress
     st = _Str()
     payloads = bytearray()
     sections = []
-    for key, namefield in _SECTIONS:
-        groups = {}
-        for it in manifest.get(key, []):
-            groups.setdefault(it[namefield], []).append(it)
-        packer = _PACKERS[key]
-        entries = []
-        for name in sorted(groups):
-            recs = groups[name]
-            off = len(payloads)
-            payloads += struct.pack("<I", len(recs))
-            for r in recs:
-                body = packer(st, r)
-                payloads += struct.pack("<I", len(body)) + body
-            entries.append((st.add(name), off))
-        sections.append(entries)
+
+    total = sum(len(manifest.get(key, [])) for key, _ in _SECTIONS)
+    with Progress("records", total=total) as progress:
+        for key, namefield in _SECTIONS:
+            groups = {}
+            for it in manifest.get(key, []):
+                groups.setdefault(it[namefield], []).append(it)
+            packer = _PACKERS[key]
+            entries = []
+            for name in sorted(groups):
+                recs = groups[name]
+                off = len(payloads)
+                payloads += struct.pack("<I", len(recs))
+                for r in recs:
+                    body = packer(st, r)
+                    payloads += struct.pack("<I", len(body)) + body
+                    progress.increment()
+                entries.append((st.add(name), off))
+            sections.append(entries)
+
     out = bytearray(MAGIC) + struct.pack("<II", VERSION, len(st.buf)) + st.buf
     for entries in sections:
         out += struct.pack("<I", len(entries))
