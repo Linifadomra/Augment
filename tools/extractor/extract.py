@@ -24,7 +24,6 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
 def _require_libclang() -> None:
@@ -49,15 +48,8 @@ def _select_backend(binary_path: str, debug_format: str | None):
     else:
         sys.exit(f"[extract] unknown --debug-format {fmt!r} (expected dwarf or pdb)")
 
-def _walk_one(args: Tuple[str, List[str]]) -> dict:
-    """
-    Worker entry point: parse one translation unit and return its records.
-    """
+def _walk_one(args: Tuple[str, List[str], str]) -> dict:
     source_file, flags, project_root = args
-
-    from extractor.ast_walk.walker import set_project_root, walk
-    set_project_root(project_root)
-
 
     from extractor.logger import get_logger
     log = get_logger("walker.worker")
@@ -67,53 +59,24 @@ def _walk_one(args: Tuple[str, List[str]]) -> dict:
 
     _EMPTY: dict = {"structs": [], "functions": [], "enums": [], "typedefs": []}
 
-    from extractor.ast_walk.walker import walk
+    from extractor.ast_walk.walker import set_project_root, walk
+    set_project_root(project_root)
+
     try:
         result = walk(source_file, flags)
-        counts = {k: len(v) for k, v in result.items()}
-        log.debug("  done: %s", counts)
+        log.debug("  done: %s", {k: len(v) for k, v in result.items()})
         return result
-
     except RuntimeError as exc:
-        log.error(
-            "walker error in %s: %s",
-            source_file, exc,
-        )
+        log.error("walker error in %s: %s", source_file, exc)
         return _EMPTY
-
     except Exception as exc:
         log.error(
             "Failed to parse TU. File will be skipped.\n"
-            "  path : %s\n"
-            "  flags: %s\n"
-            "  error: %s: %s",
-            source_file,
-            " ".join(flags),
-            type(exc).__name__,
-            exc,
+            "  path : %s\n  flags: %s\n  error: %s: %s",
+            source_file, " ".join(flags), type(exc).__name__, exc,
         )
         return _EMPTY
 
-def _progress_printer(counter: list, total: int, stop: threading.Event) -> None:
-    start = time.time()
-    i = 0
-    while not stop.is_set():
-        done = counter[0]
-        elapsed = time.time() - start
-        rate = done / elapsed if elapsed > 0 else 0
-        eta = (total - done) / rate if rate > 0 else 0
-        pct = done / total * 100 if total > 0 else 0
-        bar_filled = int(pct / 2)
-        bar = "█" * bar_filled + "░" * (50 - bar_filled)
-        spin = _SPINNER[i % len(_SPINNER)]
-        print(
-            f"\r{spin} [{bar}] {pct:5.1f}%  {done}/{total} TUs  "
-            f"ETA {int(eta//60)}m{int(eta%60):02d}s   ",
-            end="", flush=True
-        )
-        i += 1
-        time.sleep(0.1)
-    print(f"\r✓ [{('█' * 50)}] 100.0%  {total}/{total} TUs  done{' ' * 20}")
 
 def run(
     binary_path: str,
@@ -123,7 +86,7 @@ def run(
     debug_format: str | None = None,
     jobs: int | None = None,
     log_file: Optional[str] = None,
-    verbose: bool = False
+    verbose: bool = False,
 ) -> Dict:
     from extractor.logger import configure, get_logger
     configure(
@@ -134,115 +97,89 @@ def run(
     )
     log = get_logger("extract")
 
+    _require_libclang()
+
     from extractor.ast_walk.walker import set_project_root
     set_project_root(project_root)
 
-    _require_libclang()
-
-    # 1. Load compile database
     from extractor.ast_walk.compile_db import load as load_compile_db
     log.info("loading compile_commands: %s", compile_commands_path)
     flag_map = load_compile_db(compile_commands_path)
-
     if not flag_map:
         print("Warning: compile_commands.json is empty. No files to walk")
 
-    # 2. Walk all translation units in parallel
-    combined: Dict[str, list] = {
-        "structs": [], "functions": [], "enums": [], "typedefs": []
-    }
+    combined: Dict[str, list] = {"structs": [], "functions": [], "enums": [], "typedefs": []}
     seen: Dict[str, set] = {k: set() for k in combined}
 
     workers = jobs or round(os.cpu_count() / 2) or 1
-    project_root = str(Path(compile_commands_path).resolve().parent.parent)
-    items = [(src, flags, project_root) for src, flags in flag_map.items()]
+    items   = [(src, flags, project_root) for src, flags in flag_map.items()]
     total   = len(items)
 
     log.info("walking %d TUs with %d workers", total, workers)
     print(f"[extract] walking {total} TUs with {workers} workers...")
 
-    counter      = [0]
-    skipped      = [0]   # TUs that returned empty due to a parse error
-    stop         = threading.Event()
-    printer      = threading.Thread(
-        target=_progress_printer, args=(counter, total, stop), daemon=True
-    )
-    printer.start()
+    skipped = [0]
 
+    from extractor.utility.spinner import Progress
     from concurrent.futures import ProcessPoolExecutor, as_completed
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_walk_one, item): item[0] for item in items}
-        for future in as_completed(futures):
-            counter[0] += 1
-            source_file = futures[future]
 
-            try:
-                result = future.result()
-            except Exception as exc:
-                # Defensive: _walk_one itself should not raise, but if it does
-                # we log and continue rather than crashing the main process.
-                log.error(
-                    "unexpected exception from worker for %s: %s: %s",
-                    source_file, type(exc).__name__, exc,
-                )
-                skipped[0] += 1
-                continue
+    with Progress("TUs", total=total) as progress:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_walk_one, item): item[0] for item in items}
+            for future in as_completed(futures):
+                source_file = futures[future]
+                progress.increment()
 
-            record_counts = {k: len(v) for k, v in result.items()}
-            all_empty = all(n == 0 for n in record_counts.values())
-            if all_empty:
-                skipped[0] += 1
-                log.debug("TU produced no records (skipped or errored): %s", source_file)
+                try:
+                    result = future.result()
+                except Exception as exc:
+                    log.error(
+                        "unexpected exception from worker for %s: %s: %s",
+                        source_file, type(exc).__name__, exc,
+                    )
+                    skipped[0] += 1
+                    continue
 
-            for key in combined:
-                for record in result[key]:
-                    dedup_key = _dedup_key(key, record)
-                    if dedup_key not in seen[key]:
-                        seen[key].add(dedup_key)
-                        combined[key].append(record)
+                if all(len(v) == 0 for v in result.values()):
+                    skipped[0] += 1
+                    log.debug("TU produced no records (skipped or errored): %s", source_file)
 
-    stop.set()
-    printer.join()
+                for key in combined:
+                    for record in result[key]:
+                        dedup_key = _dedup_key(key, record)
+                        if dedup_key not in seen[key]:
+                            seen[key].add(dedup_key)
+                            combined[key].append(record)
 
     if skipped[0]:
-        log.warning(
-            "%d/%d TUs produced no records (parse errors or genuinely empty); "
-            "check log output for ERROR entries to identify failing files",
-            skipped[0], total,
-        )
-        print(
+        msg = (
             f"[extract] Warning: {skipped[0]}/{total} TUs were skipped or empty. "
-            f"{'See ' + log_file if log_file else 'Rerun with --log-file <path> to capture details.'}",
-            file=sys.stderr,
+            + (f"See {log_file}" if log_file else "Rerun with --log-file <path> to capture details.")
         )
+        log.warning(msg)
+        print(msg, file=sys.stderr)
 
     log.info(
         "walk complete: structs=%d functions=%d enums=%d typedefs=%d",
-        len(combined["structs"]),
-        len(combined["functions"]),
-        len(combined["enums"]),
-        len(combined["typedefs"]),
+        len(combined["structs"]), len(combined["functions"]),
+        len(combined["enums"]), len(combined["typedefs"]),
     )
 
-    # 3. Extract RVAs from binary
     log.info("extracting RVAs from %s", binary_path)
     backend = _select_backend(binary_path, debug_format)
     rva_map = backend.extract_rvas(binary_path)
     log.info("got %d RVA entries", len(rva_map))
 
-    # 4. Merge
     from extractor.merge import merge
     manifest = merge(combined, rva_map)
 
-    # 5. Write output
     from extractor.output.pack import pack
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     json_path = out.with_suffix(".json")
-    agmf_path = out
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
-    with open(agmf_path, "wb") as f:
+    with open(out, "wb") as f:
         f.write(pack(manifest))
 
     summary = (
@@ -251,7 +188,7 @@ def run(
         f"{len(manifest['structs'])} structs, "
         f"{len(manifest['enums'])} enums, "
         f"{len(manifest['typedefs'])} typedefs "
-        f"-> {json_path}, {agmf_path}"
+        f"-> {json_path}, {out}"
     )
     print(summary)
     log.info(summary)
