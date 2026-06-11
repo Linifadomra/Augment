@@ -15,9 +15,17 @@ _DONE_ASCII   = "+"
 
 def _supports_unicode() -> bool:
     try:
-        return sys.stdout.encoding.lower().replace("-", "") in ("utf8", "utf16", "utf32")
-    except AttributeError:
+        encoding = (sys.stdout.encoding or "").lower().replace("-", "")
+        if encoding not in ("utf8", "utf16", "utf32"):
+            return False
+        # Windows console lies about encoding support
+        if sys.platform == "win32":
+            import ctypes
+            return ctypes.windll.kernel32.GetConsoleOutputCP() == 65001
+        return True
+    except Exception:
         return False
+    
 
 _UNICODE = _supports_unicode()
 
