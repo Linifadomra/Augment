@@ -81,6 +81,7 @@ class DwarfBackend(DebugInfoBackend):
                 low_pc  = die.attr("DW_AT_low_pc")
                 if mangled and low_pc:
                     rva = int(low_pc, 0)
+                    # best-pick
                     if mangled not in result or rva > result[mangled]:
                         result[mangled] = rva
             for child in die.children:
