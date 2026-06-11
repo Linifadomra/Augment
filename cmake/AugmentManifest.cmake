@@ -1,68 +1,68 @@
 if(NOT DEFINED AUGMENT_EXTRACT_SCRIPT)
-    set(AUGMENT_EXTRACT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tools/manifest/extract.py"
+    set(AUGMENT_EXTRACT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tools/extractor/extract.py"
         CACHE FILEPATH "Path to extract.py")
-endif()
-if(NOT DEFINED AUGMENT_PACK_SCRIPT)
-    set(AUGMENT_PACK_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tools/manifest/pack.py"
-        CACHE FILEPATH "Path to pack.py")
 endif()
 
 function(augment_manifest)
-    cmake_parse_arguments(AM "SEPARATE_TARGET" "TARGET;OUTPUT;JSON" "EXCLUDE;EXCLUDE_PREFIX" ${ARGN})
+    cmake_parse_arguments(AM "SEPARATE_TARGET"
+        "TARGET;OUTPUT;COMPILE_COMMANDS"
+        "EXCLUDE;EXCLUDE_PREFIX"
+        ${ARGN})
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
     if(NOT AM_TARGET OR NOT AM_OUTPUT)
         message(FATAL_ERROR "augment_manifest: TARGET and OUTPUT are required")
     endif()
 
-    if(NOT AM_JSON)
-        set(AM_JSON "${AM_OUTPUT}.json")
+    if(NOT AM_COMPILE_COMMANDS)
+        set(AM_COMPILE_COMMANDS "${CMAKE_BINARY_DIR}/compile_commands.json")
     endif()
 
-    set(_excl_file "")
+    set(_excl_args "")
     if(AM_EXCLUDE)
         set(_excl_file "${CMAKE_CURRENT_BINARY_DIR}/${AM_TARGET}_exclude.txt")
         list(JOIN AM_EXCLUDE "\n" _excl_content)
         file(WRITE "${_excl_file}" "${_excl_content}\n")
+        list(APPEND _excl_args "--exclude-file" "${_excl_file}")
     endif()
-
-    set(_excl_prefix_file "")
     if(AM_EXCLUDE_PREFIX)
         set(_excl_prefix_file "${CMAKE_CURRENT_BINARY_DIR}/${AM_TARGET}_exclude_prefix.txt")
         list(JOIN AM_EXCLUDE_PREFIX "\n" _excl_prefix_content)
         file(WRITE "${_excl_prefix_file}" "${_excl_prefix_content}\n")
+        list(APPEND _excl_args "--exclude-prefix-file" "${_excl_prefix_file}")
     endif()
 
-    set(_pack_cmd
-        "${Python3_EXECUTABLE}" "${AUGMENT_PACK_SCRIPT}"
-        "${AM_JSON}" "${AM_OUTPUT}"
-    )
-    if(_excl_file)
-        list(APPEND _pack_cmd "--exclude-file" "${_excl_file}")
-    endif()
-    if(_excl_prefix_file)
-        list(APPEND _pack_cmd "--exclude-prefix-file" "${_excl_prefix_file}")
-    endif()
+    set(_target_bin $<TARGET_FILE:${AM_TARGET}>)
 
     if(WIN32 AND MSVC)
         target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:/Zi>)
         set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
+        set(_fmt_arg "--debug-format" "pdb")
     else()
         target_compile_options(${AM_TARGET} PRIVATE $<$<CONFIG:Release>:-g>)
-        set(_extract_src "$<TARGET_FILE:${AM_TARGET}>")
+        set(_extract_src "${_target_bin}")
+        set(_fmt_arg "--debug-format" "dwarf")
     endif()
 
-    set(_target_bin $<TARGET_FILE:${AM_TARGET}>)
+    set(_extract_cmd
+        "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
+        "--binary"            "${_extract_src}"
+        "--compile-commands"  "${AM_COMPILE_COMMANDS}"
+        "--output"            "${AM_OUTPUT}"
+        ${_fmt_arg}
+        ${_excl_args}
+    )
+
+    cmake_path(REPLACE_EXTENSION AM_OUTPUT LAST_ONLY ".json" OUTPUT_VARIABLE _json_out)
+    cmake_path(REPLACE_EXTENSION AM_OUTPUT LAST_ONLY ".agmf" OUTPUT_VARIABLE _agmf_out)
 
     if(AM_SEPARATE_TARGET)
         if(APPLE)
             set(_dbg "${_target_bin}.dSYM")
             add_custom_command(
-                OUTPUT  "${AM_OUTPUT}" "${AM_JSON}"
+                OUTPUT  "${_agmf_out}" "${_json_out}"
                 COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
-                COMMAND "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
-                        "${_dbg}" "${AM_JSON}"
-                COMMAND ${_pack_cmd}
+                COMMAND ${_extract_cmd} "--binary" "${_dbg}"
                 DEPENDS "${_target_bin}"
                 VERBATIM
             )
@@ -72,17 +72,15 @@ function(augment_manifest)
                 set(_strip_cmd COMMAND "${CMAKE_OBJCOPY}" --strip-debug "${_target_bin}")
             endif()
             add_custom_command(
-                OUTPUT  "${AM_OUTPUT}" "${AM_JSON}"
-                COMMAND "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
-                        "${_extract_src}" "${AM_JSON}"
-                COMMAND ${_pack_cmd}
+                OUTPUT  "${_agmf_out}" "${_json_out}"
+                COMMAND ${_extract_cmd}
                 ${_strip_cmd}
                 DEPENDS "${_target_bin}"
                 VERBATIM
             )
         endif()
         add_custom_target("gen_manifest"
-            DEPENDS "${AM_OUTPUT}"
+            DEPENDS "${_agmf_out}"
         )
         add_dependencies("gen_manifest" "${AM_TARGET}")
     else()
@@ -90,16 +88,12 @@ function(augment_manifest)
             set(_dbg "${_target_bin}.dSYM")
             add_custom_command(TARGET ${AM_TARGET} POST_BUILD
                 COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
-                COMMAND "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
-                        "${_dbg}" "${AM_JSON}"
-                COMMAND ${_pack_cmd}
+                COMMAND ${_extract_cmd} "--binary" "${_dbg}"
                 VERBATIM
             )
         else()
             add_custom_command(TARGET ${AM_TARGET} POST_BUILD
-                COMMAND "${Python3_EXECUTABLE}" "${AUGMENT_EXTRACT_SCRIPT}"
-                        "${_extract_src}" "${AM_JSON}"
-                COMMAND ${_pack_cmd}
+                COMMAND ${_extract_cmd}
                 VERBATIM
             )
             if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
