@@ -10,12 +10,22 @@ _BUILTIN_EXCLUSIONS = (
     "struct (unnamed",
     "class (unnamed",
     "union (unnamed",
+    "(unnamed struct",
+    "(unnamed union",
+    "tinystl",
     "zz::",                  # dobby
     "AssemblerCodeBuilder",  # dobby
+    "ClearCache",            # dobby
+    "ClosureTrampoline",     # dobby
+    "CodeGenBase",           # dobby
+    "CodeMemBuffer",         # dobby
+    "true>>>",
     "augment",               # augment
     "std::",                 # standard lib
     "boost::",               # boost lib
     "__gnu_cxx::",           # gnu specific
+    "$_",                    # compiler-generated
+    ">::",
     "__cxxabiv",
     "vtable for ",
     "typeinfo for ",
@@ -136,7 +146,6 @@ def _apply_flat_names(functions: List[dict], exclude_prefixes: tuple) -> None:
     dm = _demangle_batch(mangled)
     to_remove = []
     for i, fn in enumerate(functions):
-        # prefer demangled output then fall back to original without leading underscore
         dem = dm.get(fn["mangled"], fn["mangled"].lstrip("_"))
         flat = _clean_flat(dem)
         if _is_excluded(flat, exclude_prefixes):
@@ -162,15 +171,15 @@ def _merge_functions(
 
     rva_keys = list(rva_map.keys())
     rva_dm = _demangle_batch(rva_keys)
-    
+
     clean_rva_lookup = {}
     for k in rva_keys:
         if rva_map[k] is None:
             continue
-        
+
         raw_norm = _normalize_for_matching(_clean_flat(k))
         dm_norm = _normalize_for_matching(_clean_flat(rva_dm.get(k, k)))
-        
+
         clean_rva_lookup[raw_norm] = (k, rva_map[k])
         clean_rva_lookup[dm_norm] = (k, rva_map[k])
 
@@ -183,11 +192,11 @@ def _merge_functions(
         mangled    = fn.get("mangled", "")
         rva_int    = None
         used_key   = None
-        
+
         if mangled and mangled in rva_map:
             rva_int = rva_map.get(mangled)
             used_key = mangled
-        
+
         if rva_int is None and mangled:
             try:
                 clean = _normalize_for_matching(_clean_flat(ast_dm.get(mangled, mangled)))
@@ -195,7 +204,7 @@ def _merge_functions(
                     used_key, rva_int = clean_rva_lookup[clean]
             except Exception:
                 pass
-            
+
         detected_self: Optional[str] = None
         if not fn.get("member") and fn.get("args"):
             first_arg = fn["args"][0]
@@ -223,7 +232,7 @@ def _merge_functions(
             record["args"] = args
 
         record["rva"] = _rva_hex(rva_int) if rva_int is not None else None
-        
+
         if used_key:
             if re.match(r'^(_Z|\?|@)', used_key):
                 record["mangled"] = used_key
@@ -267,7 +276,7 @@ def _merge_functions(
         if not chosen:
             chosen = keys[0]
         out.append(_opaque_stub(chosen, rva_int))
-        
+
     return out
 
 

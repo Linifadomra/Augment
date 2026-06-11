@@ -57,6 +57,23 @@ typedef struct AugmentRegOpts {
     AugmentContract    contract;
 } AugmentRegOpts;
 
+#define AUGMENT_HOOK(sym, fn)                                           \
+    static struct _AugmentAutoHook_##sym {                              \
+        _AugmentAutoHook_##sym() {                                      \
+            static const auto _fn = fn;                                 \
+            augment_register(                                           \
+                #sym,                                                   \
+                AUGMENT_PHASE_BEFORE,                                   \
+                [](AugmentCtx* ctx, void*) { _fn(ctx); },               \
+                nullptr, nullptr);                                      \
+        }                                                               \
+    } _augment_autohook_instance_##sym
+
+AUGMENT_API void  augment_register_instance(const char* class_name, void* ptr);
+AUGMENT_API void  augment_unregister_instance(const char* class_name, void* ptr);
+AUGMENT_API void* augment_get_instance(const char* class_name, int index);
+AUGMENT_API int augment_instance_count(const char* class_name);
+
 /* API */
 
 using AugmentLogFn = void(*)(const char* tag, const char* msg);

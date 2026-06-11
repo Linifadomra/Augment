@@ -5,7 +5,7 @@ endif()
 
 function(augment_manifest)
     cmake_parse_arguments(AM "SEPARATE_TARGET"
-        "TARGET;OUTPUT;COMPILE_COMMANDS;PROJECT_ROOT"
+        "TARGET;OUTPUT;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT"
         "EXCLUDE;EXCLUDE_PREFIX"
         ${ARGN})
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -50,20 +50,54 @@ function(augment_manifest)
 
     cmake_path(GET AUGMENT_EXTRACT_SCRIPT PARENT_PATH _extract_script_dir)
     cmake_path(GET _extract_script_dir PARENT_PATH _extract_tools_dir)
+    set(_py_env "${CMAKE_COMMAND}" -E env "PYTHONPATH=${_extract_tools_dir}")
+    set(_py_run "${_py_env}" "${Python3_EXECUTABLE}" -u "${AUGMENT_EXTRACT_SCRIPT}")
 
-    set(_extract_cmd
-        "${CMAKE_COMMAND}" -E env "PYTHONPATH=${_extract_tools_dir}"
-        "${Python3_EXECUTABLE}" -u "${AUGMENT_EXTRACT_SCRIPT}"
-        "--binary"            "${_extract_src}"
+    set(_ast_manifest "${CMAKE_CURRENT_BINARY_DIR}/${AM_TARGET}_ast_manifest.json")
+
+    if(AM_REGISTRY_OUT)
+        set(_registry_out "${AM_REGISTRY_OUT}")
+    else()
+        cmake_path(GET AM_OUTPUT PARENT_PATH _output_dir)
+        set(_registry_out "${_output_dir}/augment_generated_registry.cpp")
+    endif()
+
+    set(_phase1_cmd
+        ${_py_run}
+        phase1
         "--compile-commands"  "${AM_COMPILE_COMMANDS}"
-        "--output"            "${AM_OUTPUT}"
         "--project-root"      "${AM_PROJECT_ROOT}"
+        "--ast-out"           "${_ast_manifest}"
+        "--registry-out"      "${_registry_out}"
+    )
+
+    add_custom_command(
+        OUTPUT  "${_ast_manifest}" "${_registry_out}"
+        COMMAND ${_phase1_cmd}
+        DEPENDS "${AM_COMPILE_COMMANDS}"
+        COMMENT "augment: phase1 AST walk + registry codegen for ${AM_TARGET}"
+        USES_TERMINAL
+        VERBATIM
+    )
+
+    add_custom_target("${AM_TARGET}_augment_phase1"
+        DEPENDS "${_ast_manifest}" "${_registry_out}"
+    )
+
+    target_sources(${AM_TARGET} PRIVATE "${_registry_out}")
+
+    cmake_path(REPLACE_EXTENSION AM_OUTPUT LAST_ONLY ".json" OUTPUT_VARIABLE _json_out)
+    set(_agmf_out "${AM_OUTPUT}")
+
+    set(_phase2_cmd
+        ${_py_run}
+        phase2
+        "--ast-manifest"  "${_ast_manifest}"
+        "--binary"        "${_extract_src}"
+        "--output"        "${AM_OUTPUT}"
         ${_fmt_arg}
         ${_excl_args}
     )
-
-    cmake_path(REPLACE_EXTENSION AM_OUTPUT LAST_ONLY ".json" OUTPUT_VARIABLE _json_out)
-    set(_agmf_out "${AM_OUTPUT}") 
 
     if(AM_SEPARATE_TARGET)
         if(APPLE)
@@ -71,8 +105,9 @@ function(augment_manifest)
             add_custom_command(
                 OUTPUT  "${_agmf_out}" "${_json_out}"
                 COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
-                COMMAND ${_extract_cmd} "--binary" "${_dbg}"
-                DEPENDS "${_target_bin}"
+                COMMAND ${_phase2_cmd} "--binary" "${_dbg}"
+                DEPENDS "${_target_bin}" "${_ast_manifest}"
+                COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
                 USES_TERMINAL
                 VERBATIM
             )
@@ -83,29 +118,35 @@ function(augment_manifest)
             endif()
             add_custom_command(
                 OUTPUT  "${_agmf_out}" "${_json_out}"
-                COMMAND ${_extract_cmd}
+                COMMAND ${_phase2_cmd}
                 ${_strip_cmd}
-                DEPENDS "${_target_bin}"
+                DEPENDS "${_target_bin}" "${_ast_manifest}"
+                COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
                 USES_TERMINAL
                 VERBATIM
             )
         endif()
+
         add_custom_target("gen_manifest"
             DEPENDS "${_agmf_out}"
         )
-        add_dependencies("gen_manifest" "${AM_TARGET}")
+        # gen_manifest needs the binary (phase2) and the ast manifest (phase1)
+        add_dependencies("gen_manifest" "${AM_TARGET}" "${AM_TARGET}_augment_phase1")
+
     else()
         if(APPLE)
             set(_dbg "${_target_bin}.dSYM")
             add_custom_command(TARGET ${AM_TARGET} POST_BUILD
                 COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
-                COMMAND ${_extract_cmd} "--binary" "${_dbg}"
+                COMMAND ${_phase2_cmd} "--binary" "${_dbg}"
+                COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
                 USES_TERMINAL
                 VERBATIM
             )
         else()
             add_custom_command(TARGET ${AM_TARGET} POST_BUILD
-                COMMAND ${_extract_cmd}
+                COMMAND ${_phase2_cmd}
+                COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
                 USES_TERMINAL
                 VERBATIM
             )
@@ -117,5 +158,15 @@ function(augment_manifest)
                 )
             endif()
         endif()
+
+        # Convenience target so the user can trigger phase1 explicitly:
+        #   cmake --build . --target <target>_augment_phase1
+        # (Already defined above via add_custom_target.)
     endif()
+
+    add_custom_target("gen_manifest_phase1"
+        DEPENDS "${_ast_manifest}" "${_registry_out}"
+    )
+    add_dependencies("gen_manifest_phase1" "${AM_TARGET}_augment_phase1")
+
 endfunction()
