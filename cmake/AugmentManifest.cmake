@@ -70,6 +70,8 @@ function(augment_manifest)
     endif()
 
     set(_phase1_cmd
+        ${CMAKE_COMMAND} -E env
+            "AUGMENT_JOBS=$ENV{AUGMENT_JOBS}"
         ${_py_run}
         phase1
         "--compile-commands"  "${AM_COMPILE_COMMANDS}"

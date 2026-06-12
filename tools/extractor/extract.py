@@ -143,7 +143,7 @@ def phase1(
     seen_index: Dict[str, Dict[str, int]] = {k: {} for k in combined}
     richness_cache: Dict[str, List[int]] = {k: [] for k in combined}
 
-    workers = jobs or max(1, round(os.cpu_count() / 2))
+    workers = jobs or int(os.environ.get("AUGMENT_JOBS", 0)) or max(1, round(os.cpu_count() / 2))
     items = [
         (src, flags, project_root)
         for src, flags in flag_map.items()
