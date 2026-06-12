@@ -35,7 +35,10 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, 
+
+
+_KEY_FIELD = {"functions": "mangled", "structs": "name", "enums": "name", "typedefs": "alias"}
 
 
 def _richness(fn: dict) -> int:
@@ -70,6 +73,9 @@ def _select_backend(binary_path: str, debug_format: str | None):
         sys.exit(f"[extract] unknown --debug-format {fmt!r} (expected dwarf or pdb)")
 
 
+_EMPTY: dict = {"structs": (), "functions": (), "enums": (), "typedefs": ()}
+
+
 def _walk_one(args: Tuple[str, List[str], str]) -> dict:
     source_file, flags, project_root = args
 
@@ -78,8 +84,6 @@ def _walk_one(args: Tuple[str, List[str], str]) -> dict:
 
     log.debug("parsing TU: %s", source_file)
     log.debug("  flags: %s", " ".join(flags))
-
-    _EMPTY: dict = {"structs": [], "functions": [], "enums": [], "typedefs": []}
 
     from extractor.ast_walk.walker import set_project_root, walk
     set_project_root(project_root)
@@ -100,16 +104,8 @@ def _walk_one(args: Tuple[str, List[str], str]) -> dict:
         return _EMPTY
 
 
-def _dedup_key(section: str, record: dict) -> str:
-    if section == "functions":
-        return record.get("mangled", "")
-    if section == "structs":
-        return record.get("name", "")
-    if section == "enums":
-        return record.get("name", "")
-    if section == "typedefs":
-        return record.get("alias", "")
-    return str(record)
+def _is_excluded(src: str, exclude_paths: tuple[str, ...]) -> bool:
+    return any(frag in src for frag in exclude_paths)
 
 
 def phase1(
@@ -123,12 +119,6 @@ def phase1(
     exclude_prefixes: tuple[str, ...] = (),
     exclude_paths: tuple[str, ...] = ()
 ) -> Dict:
-    """
-    Walk the source tree with libclang, write ast_manifest.json, and
-    optionally emit augment_generated_registry.cpp.
-
-    Returns the raw AST manifest dict (no RVAs, no flat names yet).
-    """
     from extractor.logger import configure, get_logger
     configure(
         level="DEBUG" if verbose else "WARNING",
@@ -147,59 +137,57 @@ def phase1(
     log.info("loading compile_commands: %s", compile_commands_path)
     flag_map = load_compile_db(compile_commands_path)
     if not flag_map:
-        log.warn("[extract] Warning: compile_commands.json is empty. No files to walk.")
+        log.warning("[extract] Warning: compile_commands.json is empty. No files to walk.")
 
     combined: Dict[str, list] = {"structs": [], "functions": [], "enums": [], "typedefs": []}
-    seen: Dict[str, set] = {k: set() for k in combined}
+    seen_index: Dict[str, Dict[str, int]] = {k: {} for k in combined}
+    richness_cache: Dict[str, List[int]] = {k: [] for k in combined}
 
-    workers = jobs or round(os.cpu_count() / 2) or 1
-    items   = [(src, flags, project_root) for src, flags in flag_map.items()]
-    total   = len(items)
+    workers = jobs or max(1, round(os.cpu_count() / 2))
+    items = [
+        (src, flags, project_root)
+        for src, flags in flag_map.items()
+        if not _is_excluded(src, exclude_paths)
+    ]
+    total = len(items)
+    chunksize = max(4, total // (workers * 8))
+    skipped = 0
 
-    log.info("walking %d TUs with %d workers", total, workers)
-
-    skipped = [0]
+    log.info("walking %d TUs with %d workers (chunksize=%d)", total, workers, chunksize)
 
     from extractor.utility.spinner import Progress
-    from concurrent.futures import ProcessPoolExecutor, as_completed
+    from multiprocessing import Pool
 
     with Progress("TUs", total=total) as progress:
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_walk_one, item): item[0] for item in items}
-            for future in as_completed(futures):
-                source_file = futures[future]
+        with Pool(processes=workers) as pool:
+            for result in pool.imap_unordered(_walk_one, items, chunksize=chunksize):
                 progress.increment()
-
                 try:
-                    result = future.result()
+                    if not any(result.values()):
+                        skipped += 1
+                        continue
+                    for key in combined:
+                        for record in result[key]:
+                            dk = record.get(_KEY_FIELD.get(key, ""), "")
+                            if not dk:
+                                continue
+                            existing = seen_index[key].get(dk)
+                            if existing is None:
+                                seen_index[key][dk] = len(combined[key])
+                                combined[key].append(record)
+                                richness_cache[key].append(_richness(record))
+                            elif key == "functions":
+                                r = _richness(record)
+                                if r > richness_cache[key][existing]:
+                                    combined[key][existing] = record
+                                    richness_cache[key][existing] = r
                 except Exception as exc:
-                    log.error(
-                        "unexpected exception from worker for %s: %s: %s",
-                        source_file, type(exc).__name__, exc,
-                    )
-                    skipped[0] += 1
-                    continue
+                    log.error("merge error: %s: %s", type(exc).__name__, exc)
+                    skipped += 1
 
-                if all(len(v) == 0 for v in result.values()):
-                    skipped[0] += 1
-                    log.debug("TU produced no records (skipped or errored): %s", source_file)
-
-                for key in combined:
-                    for record in result[key]:
-                        dedup_key = _dedup_key(key, record)
-                        if dedup_key not in seen[key]:
-                            seen[key].add(dedup_key)
-                            combined[key].append(record)
-                        elif key == "functions":
-                            for i, existing in enumerate(combined[key]):
-                                if _dedup_key(key, existing) == dedup_key:
-                                    if _richness(record) > _richness(existing):
-                                        combined[key][i] = record
-                                    break
-
-    if skipped[0]:
+    if skipped:
         msg = (
-            f"[extract] Warning: {skipped[0]}/{total} TUs were skipped or empty. "
+            f"[extract] Warning: {skipped}/{total} TUs were skipped or empty. "
             + (f"See {log_file}" if log_file else "Rerun with --log-file <path> to capture details.")
         )
         log.warning(msg)
@@ -211,7 +199,6 @@ def phase1(
         len(combined["enums"]), len(combined["typedefs"]),
     )
 
-    # Write ast_manifest.json
     ast_path = Path(ast_out)
     ast_path.parent.mkdir(parents=True, exist_ok=True)
     with open(ast_path, "w", encoding="utf-8") as f:
@@ -227,7 +214,6 @@ def phase1(
     print(summary)
     log.info(summary)
 
-    # Optionally emit registry codegen
     if registry_out:
         from extractor.codegen.registry import generate_registry
         generate_registry(combined, registry_out)

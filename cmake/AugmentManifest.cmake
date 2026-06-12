@@ -44,11 +44,13 @@ function(augment_manifest)
     set(_target_bin $<TARGET_FILE:${AM_TARGET}>)
 
     if(WIN32 AND MSVC)
-        target_compile_options(${AM_TARGET} PRIVATE /Zi)
+        target_compile_options(${AM_TARGET} PRIVATE
+            $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:/Zi>
+        )
         set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
         set(_fmt_arg "--debug-format" "pdb")
     else()
-        target_compile_options(${AM_TARGET} PRIVATE -g)
+        target_compile_options(${AM_TARGET} PRIVATE $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:-g>)
         set(_extract_src "${_target_bin}")
         set(_fmt_arg "--debug-format" "dwarf")
     endif()
@@ -75,6 +77,12 @@ function(augment_manifest)
         "--ast-out"           "${_ast_manifest}"
         "--registry-out"      "${_registry_out}"
     )
+
+    if(AM_EXCLUDE_PATH)
+        foreach(_frag ${AM_EXCLUDE_PATH})
+            list(APPEND _phase1_cmd "--exclude-path" "${_frag}")
+        endforeach()
+    endif()
 
     add_custom_command(
         OUTPUT  "${_ast_manifest}" "${_registry_out}"
