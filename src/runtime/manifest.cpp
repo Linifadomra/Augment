@@ -26,7 +26,17 @@ bool Reader::load(const char* path) {
         for (uint32_t i = 0; i < n; ++i) {
             uint32_t no = rd<uint32_t>(b + off), po = rd<uint32_t>(b + off + 4);
             off += 8;
-            m_index[s].emplace(str(no), po);
+
+            std::string name = str(no);
+            m_index[s].emplace(name, po);
+
+            if (name.find("::") != std::string::npos) {
+                std::string alias = name;
+                size_t pos;
+                while ((pos = alias.find("::")) != std::string::npos)
+                    alias.replace(pos, 2, "_");
+                m_index[s].emplace(std::move(alias), po);
+            }
         }
     }
     off += 4;
