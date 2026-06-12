@@ -5,7 +5,7 @@ endif()
 
 function(augment_manifest)
     cmake_parse_arguments(AM "SEPARATE_TARGET"
-        "TARGET;OUTPUT;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT"
+        "TARGET;OUTPUT;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT;PCH_OUT"
         "EXCLUDE;EXCLUDE_PREFIX;EXCLUDE_PATH"
         ${ARGN})
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -62,13 +62,6 @@ function(augment_manifest)
 
     set(_ast_manifest "${CMAKE_CURRENT_BINARY_DIR}/${AM_TARGET}_ast_manifest.json")
 
-    #if(AM_REGISTRY_OUT)
-    #    set(_registry_out "${AM_REGISTRY_OUT}")
-    #else()
-    #    cmake_path(GET AM_OUTPUT PARENT_PATH _output_dir)
-    #    set(_registry_out "${_output_dir}/augment_generated_registry.cpp")
-    #endif()
-
     if(AM_PCH_OUT)
         set(_pch_out "${AM_PCH_OUT}")
     else()
@@ -83,7 +76,6 @@ function(augment_manifest)
         "--compile-commands"  "${AM_COMPILE_COMMANDS}"
         "--project-root"      "${AM_PROJECT_ROOT}"
         "--ast-out"           "${_ast_manifest}"
-        #"--registry-out"      "${_registry_out}"
         "--pch"               "${_pch_out}"
     )
 
@@ -94,7 +86,7 @@ function(augment_manifest)
     endif()
 
     add_custom_command(
-        OUTPUT  "${_ast_manifest}" "${_registry_out}"
+        OUTPUT  "${_ast_manifest}"
         COMMAND ${_phase1_cmd}
         DEPENDS "${AM_COMPILE_COMMANDS}"
         COMMENT "augment: phase1 AST walk + registry codegen for ${AM_TARGET}"
@@ -103,10 +95,8 @@ function(augment_manifest)
     )
 
     add_custom_target("${AM_TARGET}_augment_phase1"
-        DEPENDS "${_ast_manifest}" #"${_registry_out}"
+        DEPENDS "${_ast_manifest}"
     )
-
-    #target_sources(${AM_TARGET} PRIVATE "${_registry_out}")
 
     cmake_path(REPLACE_EXTENSION AM_OUTPUT LAST_ONLY ".json" OUTPUT_VARIABLE _json_out)
     set(_agmf_out "${AM_OUTPUT}")
@@ -121,74 +111,50 @@ function(augment_manifest)
         ${_excl_args}
     )
 
-    if(AM_SEPARATE_TARGET)
-        if(APPLE)
-            set(_dbg "${_target_bin}.dSYM")
-            add_custom_command(
-                OUTPUT  "${_agmf_out}" "${_json_out}"
-                COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
-                COMMAND ${_phase2_cmd} "--binary" "${_dbg}"
-                DEPENDS "${_target_bin}" "${_ast_manifest}"
-                COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
-                USES_TERMINAL
-                VERBATIM
-            )
-        else()
-            set(_strip_cmd "")
-            if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
-                set(_strip_cmd COMMAND "${CMAKE_OBJCOPY}" --strip-debug "${_target_bin}")
-            endif()
-            add_custom_command(
-                OUTPUT  "${_agmf_out}" "${_json_out}"
-                COMMAND ${_phase2_cmd}
-                ${_strip_cmd}
-                DEPENDS "${_target_bin}" "${_ast_manifest}"
-                COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
-                USES_TERMINAL
-                VERBATIM
-            )
-        endif()
-
-        add_custom_target("gen_manifest"
-            DEPENDS "${_agmf_out}"
+    if(APPLE)
+        set(_dbg "${_target_bin}.dSYM")
+        add_custom_command(
+            OUTPUT  "${_agmf_out}" "${_json_out}"
+            COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
+            COMMAND ${_phase2_cmd} "--binary" "${_dbg}"
+            DEPENDS "${_target_bin}" 
+            COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
+            USES_TERMINAL
+            VERBATIM
         )
-        # gen_manifest needs the binary (phase2) and the ast manifest (phase1)
-        add_dependencies("gen_manifest" "${AM_TARGET}" "${AM_TARGET}_augment_phase1")
-
     else()
-        if(APPLE)
-            set(_dbg "${_target_bin}.dSYM")
-            add_custom_command(TARGET ${AM_TARGET} POST_BUILD
-                COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
-                COMMAND ${_phase2_cmd} "--binary" "${_dbg}"
-                COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
-                USES_TERMINAL
-                VERBATIM
-            )
-        else()
-            add_custom_command(TARGET ${AM_TARGET} POST_BUILD
-                COMMAND ${_phase2_cmd}
-                COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
-                USES_TERMINAL
-                VERBATIM
-            )
-            if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
-                add_custom_command(TARGET ${AM_TARGET} POST_BUILD
-                    COMMAND ${CMAKE_OBJCOPY} --strip-debug "${_target_bin}"
-                    USES_TERMINAL
-                    VERBATIM
-                )
-            endif()
+        set(_strip_cmd "")
+        if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
+            set(_strip_cmd COMMAND "${CMAKE_OBJCOPY}" --strip-debug "${_target_bin}")
         endif()
-
-        # Convenience target so the user can trigger phase1 explicitly:
-        #   cmake --build . --target <target>_augment_phase1
-        # (Already defined above via add_custom_target.)
+        add_custom_command(
+            OUTPUT  "${_agmf_out}" "${_json_out}"
+            COMMAND ${_phase2_cmd}
+            ${_strip_cmd}
+            DEPENDS "${_target_bin}"
+            COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
+            USES_TERMINAL
+            VERBATIM
+        )
     endif()
 
-    add_custom_target("gen_manifest_phase1"
-        DEPENDS "${_ast_manifest}" #"${_registry_out}"
+    add_custom_target("${AM_TARGET}_augment_phase2"
+        DEPENDS "${_agmf_out}"
     )
-    add_dependencies("gen_manifest_phase1" "${AM_TARGET}_augment_phase1")
+    add_dependencies("${AM_TARGET}_augment_phase2" "${AM_TARGET}")
+
+    if(AM_SEPARATE_TARGET)
+        add_custom_target(gen_manifest_phase1)
+        add_custom_target(gen_manifest_phase2)
+        add_custom_target(gen_manifest)
+    else()
+        add_custom_target(gen_manifest_phase1 ALL)
+        add_custom_target(gen_manifest_phase2 ALL)
+        add_custom_target(gen_manifest ALL)
+    endif()
+
+    add_dependencies(gen_manifest_phase1 "${AM_TARGET}_augment_phase1")
+    add_dependencies(gen_manifest_phase2 "${AM_TARGET}_augment_phase2")
+    add_dependencies(gen_manifest "${AM_TARGET}_augment_phase2")
 
 endfunction()
