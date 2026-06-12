@@ -35,7 +35,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Optional, 
+from typing import Dict, Optional
 
 
 _KEY_FIELD = {"functions": "mangled", "structs": "name", "enums": "name", "typedefs": "alias"}
