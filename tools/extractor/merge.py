@@ -89,11 +89,28 @@ def merge(
     }
 
 
+CHUNK_CHAR_LIMIT = 24000
+
+
+def _chunks_by_length(items, limit):
+    chunk = []
+    total = 0
+    for item in items:
+        item_len = len(item) + 1  # +1 for separator/space
+        if chunk and total + item_len > limit:
+            yield chunk
+            chunk = []
+            total = 0
+        chunk.append(item)
+        total += item_len
+    if chunk:
+        yield chunk
+
+
 def _demangle_batch(mangled: List[str]) -> Dict[str, str]:
     if not mangled:
         return {}
-    # Lightweight MSVC demangler for decorated names like
-    #   ?method@Class@@...  ->  Class::method
+
     def _msvc_demangle_one(name: str) -> str:
         if not name or not name.startswith("?"):
             return name
@@ -114,25 +131,27 @@ def _demangle_batch(mangled: List[str]) -> Dict[str, str]:
 
     for binary in ["llvm-cxxfilt", "c++filt"]:
         try:
-            result = subprocess.run(
-                [binary, *mangled],
-                capture_output=True, text=True, timeout=30,
-            )
-            lines = result.stdout.splitlines()
-            if len(lines) == len(mangled):
-                mapping = dict(zip(mangled, lines))
-                # If the external demangler returned the inputs unchanged for
-                # MSVC-decorated names, apply the MSVC fallback for those
-                # entries so we get a useful demangled form for matching.
-                for i, m in enumerate(mangled):
-                    out = mapping.get(m, "")
+            mapping: Dict[str, str] = {}
+            ok = True
+            for chunk in _chunks_by_length(mangled, CHUNK_CHAR_LIMIT):
+                result = subprocess.run(
+                    [binary, *chunk],
+                    capture_output=True, text=True, timeout=60,
+                )
+                lines = result.stdout.splitlines()
+                if len(lines) != len(chunk):
+                    ok = False
+                    break
+                for m, out in zip(chunk, lines):
                     if m.startswith("?") and out == m:
                         mapping[m] = _msvc_demangle_one(m)
+                    else:
+                        mapping[m] = out
+            if ok:
                 return mapping
         except Exception:
             pass
 
-    # Final fallback: best-effort mapping without external tools
     mapping: Dict[str, str] = {m: m.lstrip("_") for m in mangled}
     for m in mangled:
         if m.startswith("?"):
@@ -171,7 +190,9 @@ def _merge_functions(
     consumed_rva_values: set = set()
 
     rva_keys = list(rva_map.keys())
+    print(f"[_merge_functions] rva_keys count={len(rva_keys)}")
     rva_dm = _demangle_batch(rva_keys)
+    print(f"[_merge_functions] rva_dm size={len(rva_dm)}")
 
     clean_rva_lookup = {}
     for k in rva_keys:
@@ -185,7 +206,9 @@ def _merge_functions(
         clean_rva_lookup[dm_norm] = (k, rva_map[k])
 
     ast_mangled = [fn.get("mangled", "") for fn in ast_fns if fn.get("mangled")]
+    print(f"[_merge_functions] ast_mangled count={len(ast_mangled)}")
     ast_dm = _demangle_batch(ast_mangled)
+    print(f"[_merge_functions] ast_dm size={len(ast_dm)}")
 
     for fn in ast_fns:
         if _is_generated_artifact(fn):

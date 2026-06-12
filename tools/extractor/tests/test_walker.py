@@ -1,9 +1,7 @@
 """
 extractor/tests/test_walker.py
 
-Gate for Step 6: walker.walk()
-
-Strategy: use libclang's unsaved_files mechanism to parse inline C++ source strings.
+Use libclang's unsaved_files mechanism to parse inline C++ source strings.
 
 We pass the source as an unsaved file and walk it with:
     index.parse(path, args=flags, unsaved_files=[(path, source)])
