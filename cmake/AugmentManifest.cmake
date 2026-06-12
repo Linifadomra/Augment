@@ -62,12 +62,12 @@ function(augment_manifest)
 
     set(_ast_manifest "${CMAKE_CURRENT_BINARY_DIR}/${AM_TARGET}_ast_manifest.json")
 
-    if(AM_REGISTRY_OUT)
-        set(_registry_out "${AM_REGISTRY_OUT}")
-    else()
-        cmake_path(GET AM_OUTPUT PARENT_PATH _output_dir)
-        set(_registry_out "${_output_dir}/augment_generated_registry.cpp")
-    endif()
+    #if(AM_REGISTRY_OUT)
+    #    set(_registry_out "${AM_REGISTRY_OUT}")
+    #else()
+    #    cmake_path(GET AM_OUTPUT PARENT_PATH _output_dir)
+    #    set(_registry_out "${_output_dir}/augment_generated_registry.cpp")
+    #endif()
 
     if(AM_PCH_OUT)
         set(_pch_out "${AM_PCH_OUT}")
@@ -83,7 +83,7 @@ function(augment_manifest)
         "--compile-commands"  "${AM_COMPILE_COMMANDS}"
         "--project-root"      "${AM_PROJECT_ROOT}"
         "--ast-out"           "${_ast_manifest}"
-        "--registry-out"      "${_registry_out}"
+        #"--registry-out"      "${_registry_out}"
         "--pch"               "${_pch_out}"
     )
 
@@ -103,10 +103,10 @@ function(augment_manifest)
     )
 
     add_custom_target("${AM_TARGET}_augment_phase1"
-        DEPENDS "${_ast_manifest}" "${_registry_out}"
+        DEPENDS "${_ast_manifest}" #"${_registry_out}"
     )
 
-    target_sources(${AM_TARGET} PRIVATE "${_registry_out}")
+    #target_sources(${AM_TARGET} PRIVATE "${_registry_out}")
 
     cmake_path(REPLACE_EXTENSION AM_OUTPUT LAST_ONLY ".json" OUTPUT_VARIABLE _json_out)
     set(_agmf_out "${AM_OUTPUT}")
@@ -187,7 +187,7 @@ function(augment_manifest)
     endif()
 
     add_custom_target("gen_manifest_phase1"
-        DEPENDS "${_ast_manifest}" "${_registry_out}"
+        DEPENDS "${_ast_manifest}" #"${_registry_out}"
     )
     add_dependencies("gen_manifest_phase1" "${AM_TARGET}_augment_phase1")
 

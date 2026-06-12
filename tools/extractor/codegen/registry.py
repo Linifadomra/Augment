@@ -1,4 +1,6 @@
 """
+STUBBED FOR NOW
+
 extractor/codegen/registry.py
 
 Generates augment_generated_registry.cpp from an AST manifest.
@@ -25,7 +27,7 @@ A self_view that has no matching constructor symbol in the manifest
 likely means the constructor is inlined or only appears via placement
 new.  We emit a comment warning in the generated file and print to
 stderr so it shows up in the build log.
-"""
+
 from __future__ import annotations
 
 import sys
@@ -165,3 +167,4 @@ def generate_registry(manifest: dict, output_path: str) -> None:
             + ", ".join(no_ctor_classes),
             file=sys.stderr,
         )
+"""

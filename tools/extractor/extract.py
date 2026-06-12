@@ -229,9 +229,11 @@ def phase1(
     print(summary)
     log.info(summary)
 
+    """
     if registry_out:
         from extractor.codegen.registry import generate_registry
         generate_registry(combined, registry_out)
+    """
 
     return combined
 
