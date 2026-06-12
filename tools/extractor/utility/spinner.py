@@ -102,7 +102,7 @@ class Progress:
 
             print(
                 f"\r{spin} [{bar}] {pct:5.1f}%  {done}/{self.total} {self.label}  "
-                f"ETA {int(eta // 60)}m{int(eta % 60):02d}s   ",
+                f"ETA {int(eta // 60)}m{int(eta % 60):02d}s, ELAPSED {int(elapsed // 60)}m{int(elapsed % 60):02d}s",
                 end="", flush=True,
             )
             i += 1

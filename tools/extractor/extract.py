@@ -11,7 +11,7 @@ Phase 1 runs the libclang AST walk, writes ast_manifest.json and
 Phase 2 loads ast_manifest.json, extracts RVAs from the built binary,
         merges, and packs. Runs POST_BUILD.
 
-Most consumers will just use augment_manifest (Located in `cmake/AugmentManifest.cmake`)
+Most consumers will just use augment_manifest (Located in `cmake/AugmentManifest.cmake`) # noqa # fmt: skip
 
 Usage
 ===
@@ -35,10 +35,12 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple, List
+
+from extractor.utility.exclude import is_excluded
 
 
-_KEY_FIELD = {"functions": "mangled", "structs": "name", "enums": "name", "typedefs": "alias"}
+_KEY_FIELD = {"functions": "mangled", "structs": "name", "enums": "name", "typedefs": "alias"} # noqa # fmt: skip
 
 
 def _richness(fn: dict) -> int:
@@ -70,26 +72,25 @@ def _select_backend(binary_path: str, debug_format: str | None):
         from extractor.binary.dwarf import DwarfBackend
         return DwarfBackend()
     else:
-        sys.exit(f"[extract] unknown --debug-format {fmt!r} (expected dwarf or pdb)")
+        sys.exit(f"[extract] unknown --debug-format {fmt!r} (expected dwarf or pdb)") # noqa # fmt: skip
 
 
 _EMPTY: dict = {"structs": (), "functions": (), "enums": (), "typedefs": ()}
 
 
-def _walk_one(args: Tuple[str, List[str], str]) -> dict:
-    source_file, flags, project_root = args
+def _walk_one(args: Tuple[str, List[str], str, Optional[str]]) -> dict:
+    source_file, flags, project_root, pch_path = args
 
     from extractor.logger import get_logger
     log = get_logger("walker.worker")
 
     log.debug("parsing TU: %s", source_file)
-    log.debug("  flags: %s", " ".join(flags))
 
     from extractor.ast_walk.walker import set_project_root, walk
     set_project_root(project_root)
 
     try:
-        result = walk(source_file, flags)
+        result = walk(source_file, flags, pch_path=pch_path)
         log.debug("  done: %s", {k: len(v) for k, v in result.items()})
         return result
     except RuntimeError as exc:
@@ -104,10 +105,6 @@ def _walk_one(args: Tuple[str, List[str], str]) -> dict:
         return _EMPTY
 
 
-def _is_excluded(src: str, exclude_paths: tuple[str, ...]) -> bool:
-    return any(frag in src for frag in exclude_paths)
-
-
 def phase1(
     compile_commands_path: str,
     project_root: str,
@@ -117,7 +114,8 @@ def phase1(
     log_file: Optional[str] = None,
     verbose: bool = False,
     exclude_prefixes: tuple[str, ...] = (),
-    exclude_paths: tuple[str, ...] = ()
+    exclude_paths: tuple[str, ...] = (),
+    pch_out: Optional[str] = None,
 ) -> Dict:
     from extractor.logger import configure, get_logger
     configure(
@@ -139,15 +137,32 @@ def phase1(
     if not flag_map:
         log.warning("[extract] Warning: compile_commands.json is empty. No files to walk.")
 
+    pch_path = None
+    if pch_out:
+        from extractor.ast_walk.pch import build_pch
+        representative_flags = next(iter(flag_map.values()), [])
+        pch_path = build_pch(
+            project_root=project_root,
+            output_pch=pch_out,
+            compile_commands_path=compile_commands_path,
+            compile_flags=representative_flags,
+            flag_map=flag_map,
+            exclude_paths=exclude_paths,
+        )
+        if pch_path:
+            log.info("PCH ready: %s", pch_path)
+        else:
+            log.warning("PCH build failed, continuing without it")
+
     combined: Dict[str, list] = {"structs": [], "functions": [], "enums": [], "typedefs": []}
     seen_index: Dict[str, Dict[str, int]] = {k: {} for k in combined}
     richness_cache: Dict[str, List[int]] = {k: [] for k in combined}
 
-    workers = jobs or int(os.environ.get("AUGMENT_JOBS", 0)) or max(1, round(os.cpu_count() / 2))
+    workers = jobs or int(os.environ.get("AUGMENT_JOBS") or 0) or max(1, round(os.cpu_count() / 2))
     items = [
-        (src, flags, project_root)
+        (src, flags, project_root, pch_path)
         for src, flags in flag_map.items()
-        if not _is_excluded(src, exclude_paths)
+        if not is_excluded(src, exclude_paths)
     ]
     total = len(items)
     chunksize = max(4, total // (workers * 8))
@@ -188,7 +203,7 @@ def phase1(
     if skipped:
         msg = (
             f"[extract] Warning: {skipped}/{total} TUs were skipped or empty. "
-            + (f"See {log_file}" if log_file else "Rerun with --log-file <path> to capture details.")
+            + (f"See {log_file}" if log_file else "Rerun with --log-file <path> to capture details.") # noqa # fmt: skip
         )
         log.warning(msg)
         print(msg, file=sys.stderr)
@@ -270,7 +285,7 @@ def phase2(
 
     summary = (
         f"[extract] Phase 2: {len(manifest['functions'])} fns "
-        f"({sum(1 for fn in manifest['functions'] if fn['rva'] is not None)} with RVA), "
+        f"({sum(1 for fn in manifest['functions'] if fn['rva'] is not None)} with RVA), " # noqa # fmt: skip
         f"{len(manifest['structs'])} structs, "
         f"{len(manifest['enums'])} enums, "
         f"{len(manifest['typedefs'])} typedefs "
@@ -286,39 +301,42 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
     """Logging/filtering flags shared by all subcommands."""
     p.add_argument("--exclude-prefix", dest="exclude_prefixes",
                    action="append", default=[],
-                   help="Exclude functions whose demangled name starts with this prefix (repeatable)")
+                   help="Exclude functions whose demangled name starts with this prefix (repeatable)") # noqa # fmt: skip
     p.add_argument("--log-file", dest="log_file", default=None,
                    help="Write structured log output to this file")
     p.add_argument("--verbose", "-v", action="store_true", default=False,
-                   help="Set log level to DEBUG (very noisy; pair with --log-file)")
+                   help="Set log level to DEBUG (very noisy; pair with --log-file)") # noqa # fmt: skip
     p.add_argument("--exclude-path", dest="exclude_paths",
                action="append", default=[],
-               help="Exclude any cursor whose path contains this fragment (repeatable)")
+               help="Exclude any cursor whose path contains this fragment (repeatable)") # noqa # fmt: skip
 
 
 def _build_parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
         prog="extract",
-        description="Extract a function/type manifest from a binary and its sources.",
+        description="Extract a function/type manifest from a binary and its sources.", # noqa # fmt: skip
     )
     sub = root.add_subparsers(dest="subcommand")
 
     # Phase 1
-    p1 = sub.add_parser("phase1", help="AST walk (pre-build). Writes ast_manifest.json and optional registry codegen.")
-    p1.add_argument("--compile-commands", required=True, dest="compile_commands",
+    p1 = sub.add_parser("phase1", help="AST walk (pre-build). Writes ast_manifest.json and optional registry codegen.") # noqa # fmt: skip
+    p1.add_argument("--compile-commands", required=True, dest="compile_commands", # noqa # fmt: skip
                     help="Path to compile_commands.json")
     p1.add_argument("--project-root", dest="project_root", default=None,
                     help="Project root directory for filtering system headers")
     p1.add_argument("--ast-out", required=True, dest="ast_out",
                     help="Path to write the AST manifest JSON (no RVAs)")
     p1.add_argument("--registry-out", dest="registry_out", default=None,
-                    help="Path to write augment_generated_registry.cpp (optional)")
+                    help="Path to write augment_generated_registry.cpp (optional)") # noqa # fmt: skip
     p1.add_argument("--jobs", "-j", type=int, default=None,
                     help="Parallel worker count (default: cpu_count / 2)")
+    p1.add_argument("--pch", dest="pch_out", default=None,
+                    help="Path to write/reuse the precompiled header (.pch). "
+                        "Skips rebuild if compile_commands.json is unchanged.")
     _add_common_args(p1)
 
     # Phase 2
-    p2 = sub.add_parser("phase2", help="Binary RVA extraction + merge + pack (post-build).")
+    p2 = sub.add_parser("phase2", help="Binary RVA extraction + merge + pack (post-build).") # noqa # fmt: skip
     p2.add_argument("--ast-manifest", required=True, dest="ast_manifest",
                     help="Path to ast_manifest.json produced by phase1")
     p2.add_argument("--binary", required=True,
@@ -327,7 +345,7 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="Path to write the final manifest (.bin + .json)")
     p2.add_argument("--debug-format", dest="debug_format",
                     choices=["dwarf", "pdb"], default=None,
-                    help="Force debug-info format (inferred from extension if omitted)")
+                    help="Force debug-info format (inferred from extension if omitted)") # noqa # fmt: skip
     _add_common_args(p2)
 
     return root
@@ -346,7 +364,8 @@ def main(argv: list | None = None) -> None:
             log_file=args.log_file,
             verbose=args.verbose,
             exclude_prefixes=tuple(args.exclude_prefixes),
-            exclude_paths=tuple(args.exclude_paths)
+            exclude_paths=tuple(args.exclude_paths),
+            pch_out=args.pch_out,
         )
 
     elif args.subcommand == "phase2":
@@ -360,6 +379,7 @@ def main(argv: list | None = None) -> None:
             exclude_prefixes=tuple(args.exclude_prefixes),
             exclude_paths=tuple(args.exclude_paths)
         )
+
 
 if __name__ == "__main__":
     main()

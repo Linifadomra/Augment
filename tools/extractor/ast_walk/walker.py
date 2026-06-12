@@ -99,6 +99,7 @@ def walk(
     source_path: str,
     flags: List[str],
     index: Optional[Any] = None,
+    pch_path: str | None = None
 ) -> Dict[str, List[dict]]:
     """
     Parse *source_path* with the given compiler *flags* and return::
@@ -113,6 +114,20 @@ def walk(
     *index* is an optional ``clang.cindex.Index``. Pass one in when
     walking many files so the global index is reused.
     """
+    import clang.cindex as cl
+
+    index = cl.Index.create()
+
+    parse_flags = list(flags)
+    if pch_path:
+        parse_flags += ["-include-pch", pch_path]
+
+    tu = index.parse(
+        source_path,
+        args=parse_flags,
+        options=cl.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES,
+    )
+
     if index is None:
         index = _cx.Index.create()
 

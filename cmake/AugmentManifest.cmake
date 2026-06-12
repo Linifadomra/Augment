@@ -69,6 +69,12 @@ function(augment_manifest)
         set(_registry_out "${_output_dir}/augment_generated_registry.cpp")
     endif()
 
+    if(AM_PCH_OUT)
+        set(_pch_out "${AM_PCH_OUT}")
+    else()
+        set(_pch_out "${CMAKE_CURRENT_BINARY_DIR}/${AM_TARGET}_pch.pch")
+    endif()
+
     set(_phase1_cmd
         ${CMAKE_COMMAND} -E env
             "AUGMENT_JOBS=$ENV{AUGMENT_JOBS}"
@@ -78,6 +84,7 @@ function(augment_manifest)
         "--project-root"      "${AM_PROJECT_ROOT}"
         "--ast-out"           "${_ast_manifest}"
         "--registry-out"      "${_registry_out}"
+        "--pch"               "${_pch_out}"
     )
 
     if(AM_EXCLUDE_PATH)
