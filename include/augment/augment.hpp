@@ -57,6 +57,23 @@ typedef struct AugmentRegOpts {
     AugmentContract    contract;
 } AugmentRegOpts;
 
+#define AUGMENT_HOOK(sym, fn)                                           \
+    static struct _AugmentAutoHook_##sym {                              \
+        _AugmentAutoHook_##sym() {                                      \
+            static const auto _fn = fn;                                 \
+            augment_register(                                           \
+                #sym,                                                   \
+                AUGMENT_PHASE_BEFORE,                                   \
+                [](AugmentCtx* ctx, void*) { _fn(ctx); },               \
+                nullptr, nullptr);                                      \
+        }                                                               \
+    } _augment_autohook_instance_##sym
+
+AUGMENT_API void  augment_register_instance(const char* class_name, void* ptr);
+AUGMENT_API void  augment_unregister_instance(const char* class_name, void* ptr);
+AUGMENT_API void* augment_get_instance(const char* class_name, int index);
+AUGMENT_API int augment_instance_count(const char* class_name);
+
 /* API */
 
 using AugmentLogFn = void(*)(const char* tag, const char* msg);
@@ -94,14 +111,14 @@ AUGMENT_API void augment_register_struct(const char* name, const char** member_k
 AUGMENT_API int augment_load_signatures(const char* path);
 AUGMENT_API int augment_field_offset(const char* field);
 AUGMENT_API void* augment_make_closure(const char* symbol);
-AUGMENT_API void augment_call(const char* symbol, void** args, unsigned nargs);
+AUGMENT_API void augment_call(const char* symbol, void** args, unsigned nargs, int instance_index = -1);
 #else
 inline void augment_register_signature(const char*, int, const char*, const char**, unsigned) {}
 inline void augment_register_struct(const char*, const char**, unsigned) {}
 inline int augment_load_signatures(const char*) { return 0; }
 inline int augment_field_offset(const char*) { return -1; }
 inline void* augment_make_closure(const char*) { return nullptr; }
-inline void augment_call(const char*, void**, unsigned) {}
+inline void augment_call(const char*, void**, unsigned, int) {}
 #endif
 
 typedef struct AugmentArg   { const char* name; const char* kind; const char* view; } AugmentArg;

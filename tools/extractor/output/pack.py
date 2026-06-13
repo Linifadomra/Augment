@@ -2,7 +2,7 @@
 import sys, json, struct, bisect
 
 MAGIC = b"AGMF"
-VERSION = 2
+VERSION = 3
 _SECTIONS = [("functions","flat"),("structs","name"),("enums","name"),
              ("globals","name"),("typedefs","alias")]
 
@@ -21,7 +21,12 @@ class _Str:
         return off
 
 def _rva(v):
-    return int(v, 16) if v else 0
+    if not v:
+        return 0
+    try:
+        return int(v, 16)
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"malformed rva value {v!r}") from e
 
 def _pack_func(st, f):
     b = bytearray()
@@ -37,18 +42,22 @@ def _pack_func(st, f):
 def _pack_struct(st, s):
     b = bytearray(struct.pack("<II", s["size"], len(s["fields"])))
     for fl in s["fields"]:
-        b += struct.pack("<IIIiI", st.add(fl["name"]), fl["offset"], st.add(fl["kind"]),
-                         fl.get("len", -1), st.add(fl.get("view")))
+        b += struct.pack("<IiIiI", st.add(fl["name"]), fl["offset"], st.add(fl["kind"]),
+                        fl.get("len", -1), st.add(fl.get("view") or ""))
     return bytes(b)
+
+def _u64(v: int) -> int:
+    """Reinterpret any integer as unsigned 64-bit (two's complement)."""
+    return v & 0xFFFFFFFFFFFFFFFF
 
 def _pack_enum(st, e):
     b = bytearray(struct.pack("<II", st.add(e.get("owner")), len(e["values"])))
     for v in e["values"]:
-        b += struct.pack("<Iq", st.add(v["name"]), v["value"])
+        b += struct.pack("<IQ", st.add(v["name"]), _u64(v["value"]))
     return bytes(b)
 
 def _pack_global(st, g):
-    return struct.pack("<IQ", st.add(g["kind"]), _rva(g["addr"]))
+    return struct.pack("<IxxxxQ", st.add(g["kind"]), _rva(g["addr"]))
 
 def _pack_typedef(st, t):
     return struct.pack("<I", st.add(t["kind"]))
@@ -57,24 +66,30 @@ _PACKERS = {"functions": _pack_func, "structs": _pack_struct, "enums": _pack_enu
             "globals": _pack_global, "typedefs": _pack_typedef}
 
 def pack(manifest):
+    from extractor.utility.spinner import Progress
     st = _Str()
     payloads = bytearray()
     sections = []
-    for key, namefield in _SECTIONS:
-        groups = {}
-        for it in manifest.get(key, []):
-            groups.setdefault(it[namefield], []).append(it)
-        packer = _PACKERS[key]
-        entries = []
-        for name in sorted(groups):
-            recs = groups[name]
-            off = len(payloads)
-            payloads += struct.pack("<I", len(recs))
-            for r in recs:
-                body = packer(st, r)
-                payloads += struct.pack("<I", len(body)) + body
-            entries.append((st.add(name), off))
-        sections.append(entries)
+
+    total = sum(len(manifest.get(key, [])) for key, _ in _SECTIONS)
+    with Progress("records", total=total) as progress:
+        for key, namefield in _SECTIONS:
+            groups = {}
+            for it in manifest.get(key, []):
+                groups.setdefault(it[namefield], []).append(it)
+            packer = _PACKERS[key]
+            entries = []
+            for name in sorted(groups):
+                recs = groups[name]
+                off = len(payloads)
+                payloads += struct.pack("<I", len(recs))
+                for r in recs:
+                    body = packer(st, r)
+                    payloads += struct.pack("<I", len(body)) + body
+                    progress.increment()
+                entries.append((st.add(name), off))
+            sections.append(entries)
+
     out = bytearray(MAGIC) + struct.pack("<II", VERSION, len(st.buf)) + st.buf
     for entries in sections:
         out += struct.pack("<I", len(entries))
@@ -88,6 +103,8 @@ class Reader:
         assert blob[:4] == MAGIC, "bad magic"
         self.b = blob
         self.version, stlen = struct.unpack_from("<II", blob, 4)
+        if self.version != VERSION:
+            raise ValueError(f"unsupported version {self.version}, expected {VERSION}")
         self._stoff = 12
         off = 12 + stlen
         self._sec = {}
@@ -142,7 +159,7 @@ class Reader:
             size, nfields = struct.unpack_from("<II", self.b, p); q = p + 8
             fields = []
             for _ in range(nfields):
-                no, off, ko, ln, vo = struct.unpack_from("<IIIiI", self.b, q); q += 20
+                no, off, ko, ln, vo = struct.unpack_from("<IiIiI", self.b, q); q += 20
                 fields.append({"name": self._s(no), "offset": off, "kind": self._s(ko),
                                "len": ln, "view": self._s(vo)})
             return {"size": size, "fields": fields}
@@ -152,14 +169,13 @@ class Reader:
             oo, nv = struct.unpack_from("<II", self.b, p); q = p + 8
             vals = []
             for _ in range(nv):
-                no, val = struct.unpack_from("<Iq", self.b, q); q += 12
+                no, val = struct.unpack_from("<IQ", self.b, q); q += 12
                 vals.append({"name": self._s(no), "value": val})
             return {"owner": self._s(oo), "values": vals}
         return None
     def lookup_global(self, name):
         for p in self._records("globals", name):
-            ko, = struct.unpack_from("<I", self.b, p)
-            addr, = struct.unpack_from("<Q", self.b, p + 4)
+            ko, addr = struct.unpack_from("<IxxxxQ", self.b, p)
             return {"kind": self._s(ko), "addr": addr}
         return None
     def lookup_typedef(self, alias):
