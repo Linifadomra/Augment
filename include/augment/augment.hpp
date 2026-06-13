@@ -118,7 +118,7 @@ inline void augment_register_struct(const char*, const char**, unsigned) {}
 inline int augment_load_signatures(const char*) { return 0; }
 inline int augment_field_offset(const char*) { return -1; }
 inline void* augment_make_closure(const char*) { return nullptr; }
-inline void augment_call(const char*, void**, unsigned, void*, int) {}
+inline int augment_call(const char*, void**, unsigned, void*, int = -1) { return 0; }
 #endif
 
 typedef struct AugmentArg   { const char* name; const char* kind; const char* view; } AugmentArg;

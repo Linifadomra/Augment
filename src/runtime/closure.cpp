@@ -1,7 +1,9 @@
 #include "augment/augment.hpp"
+#include "augment/manifest_internal.hpp"
 
 #include <ffi.h>
 
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -12,6 +14,7 @@
 
 namespace augment::plat {
 void* sym_resolve(const char* symbol);
+intptr_t image_slide();
 }
 
 namespace {
@@ -201,13 +204,30 @@ extern "C" AUGMENT_API void* augment_make_closure(const char* symbol) {
     return c->code;
 }
 
+static void* resolve_call_target(const char* symbol) {
+    if (void* fn = augment::plat::sym_resolve(symbol))
+        return fn;
+    uint64_t rva = augment::manifest::global_reader().rva_of(symbol);
+    if (!rva)
+        return nullptr;
+    return reinterpret_cast<void*>((uintptr_t)((intptr_t)rva + augment::plat::image_slide()));
+}
+
 extern "C" AUGMENT_API int augment_call(const char* symbol, void** args, unsigned nargs,
                                         void* ret_out, int instance_index) {
-    void* fn = augment::plat::sym_resolve(symbol);
-    if (!fn) return 0;
+    if (!symbol) return 0;
+
+    void* fn = resolve_call_target(symbol);
+    if (!fn) {
+        std::fprintf(stderr, "[augment] call: resolve failed '%s'\n", symbol);
+        return 0;
+    }
 
     auto it = sig_table().find(symbol);
-    if (it == sig_table().end()) return 0;
+    if (it == sig_table().end()) {
+        std::fprintf(stderr, "[augment] call: no signature '%s'\n", symbol);
+        return 0;
+    }
     Signature& sig = it->second;
 
     void* resolved_self = nullptr;
@@ -216,9 +236,15 @@ extern "C" AUGMENT_API int augment_call(const char* symbol, void** args, unsigne
 
     if (sig.is_member && nargs + 1 == actual_argc) {
         const char* self_view = augment_fn_self_view(symbol);
-        if (!self_view) return 0;
+        if (!self_view) {
+            std::fprintf(stderr, "[augment] call: member function '%s' has no self_view\n", symbol);
+            return 0;
+        }
         resolved_self = augment_get_instance(self_view, instance_index);
-        if (!resolved_self) return 0;
+        if (!resolved_self) {
+            std::fprintf(stderr, "[augment] call: member function '%s' failed to resolve instance (index: %d)\n", symbol, instance_index);
+            return 0;
+        }
 
         static thread_local void* tl_args[64];
         tl_args[0] = &resolved_self;
@@ -229,8 +255,10 @@ extern "C" AUGMENT_API int augment_call(const char* symbol, void** args, unsigne
 
     ffi_cif cif;
     if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, actual_argc,
-                     sig.rtype, sig.atypes.data()) != FFI_OK)
+                     sig.rtype, sig.atypes.data()) != FFI_OK) {
+        std::fprintf(stderr, "[augment] call: ffi_prep_cif failed '%s'\n", symbol);
         return 0;
+    }
 
     char retbuf[64] = {};
     void* ret = (sig.rtype == &ffi_type_void) ? nullptr : static_cast<void*>(retbuf);
