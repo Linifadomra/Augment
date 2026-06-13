@@ -232,13 +232,13 @@ def _merge_functions(
         detected_self: Optional[str] = None
         if not fn.get("member") and fn.get("args"):
             first_arg = fn["args"][0]
-            if first_arg.get("name") == "actor" or first_arg.get("kind") == "ptr":
+            if first_arg.get("kind") == "ptr":
                 base_name = fn.get("flat") or fn.get("mangled") or ""
                 m = re.match(r"(?P<prefix>[^_]+)_(?P<method>.+)$", base_name)
                 if m:
                     prefix = m.group("prefix")
                     method = m.group("method")
-                    for cand in (prefix + "_c", prefix):
+                    for cand in (prefix + "_c"):
                         target_clean = _normalize_for_matching(f"{cand}_{method}")
                         if target_clean in clean_rva_lookup:
                             detected_self = cand

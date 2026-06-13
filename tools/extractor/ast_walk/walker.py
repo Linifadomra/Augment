@@ -114,36 +114,27 @@ def walk(
     *index* is an optional ``clang.cindex.Index``. Pass one in when
     walking many files so the global index is reused.
     """
-    import clang.cindex as cl
-
-    index = cl.Index.create()
+    if index is None:
+        index = _cx.Index.create()
 
     parse_flags = list(flags)
+
+    rd = _resource_dir()
+    if rd:
+        parse_flags = [f"-resource-dir={rd}"] + parse_flags
+
     if pch_path:
         parse_flags += ["-include-pch", pch_path]
 
     tu = index.parse(
         source_path,
         args=parse_flags,
-        options=cl.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES,
+        options=_cx.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
     )
 
-    if index is None:
-        index = _cx.Index.create()
-
-    rd = _resource_dir()
-    if rd:
-        flags = [f"-resource-dir={rd}"] + list(flags)
-
-    tu = index.parse(
-        source_path,
-        args=flags,
-        options=(
-            _cx.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
-        ),
-    )
-
-    _check_diagnostics(tu, source_path)
+    errors = _check_diagnostics(tu, source_path)
+    if errors:
+        raise RuntimeError("; ".join(errors))
 
     structs: List[dict]   = []
     functions: List[dict] = []
@@ -187,6 +178,7 @@ def walk(
         "enums":     enums,
         "typedefs":  typedefs,
     }
+
 
 _PRIM = {
     "void": "void",
