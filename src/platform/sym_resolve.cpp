@@ -24,17 +24,53 @@
 namespace augment::plat {
 namespace {
 
+bool macho_name_equal(const char* macho, const char* query) {
+    if (!macho || !query) return false;
+    if (std::strcmp(macho, query) == 0) return true;
+    // Mach-O strtab uses a leading '_' plus Itanium '_ZN...' => '__ZN...'.
+    if (macho[0] == '_' && std::strcmp(macho + 1, query) == 0) return true;
+    if (query[0] == '_' && std::strcmp(macho, query + 1) == 0) return true;
+    return false;
+}
+
+bool flat_name_matches(const char* dem, const char* query) {
+    while (*query) {
+        if (*query == '_') {
+            if (dem[0] == ':' && dem[1] == ':') {
+                dem += 2;
+                query++;
+                continue;
+            }
+        }
+        if (*dem != *query) return false;
+        dem++;
+        query++;
+    }
+    return *dem == '\0' || *dem == '(';
+}
+
 bool name_matches(const char* itanium, const char* query) {
-    if (std::strcmp(itanium, query) == 0) return true;
-    if (itanium[0] != '_' || itanium[1] != 'Z') return false;
+    if (macho_name_equal(itanium, query)) return true;
+
+    // Mach-O exports Itanium symbols as "_ZN..."; callers may pass "ZN...".
+    char scratch[512];
+    const char* demangle_input = itanium;
+    if (itanium[0] == '_' && itanium[1] == '_') {
+        demangle_input = itanium + 1;
+    } else if (itanium[0] == 'Z') {
+        scratch[0] = '_';
+        std::strncpy(scratch + 1, itanium, sizeof(scratch) - 2);
+        scratch[sizeof(scratch) - 1] = '\0';
+        demangle_input = scratch;
+    } else if (itanium[0] != '_' || itanium[1] != 'Z') {
+        return false;
+    }
 
     int   status = 0;
-    char* dem    = abi::__cxa_demangle(itanium, nullptr, nullptr, &status);
+    char* dem    = abi::__cxa_demangle(demangle_input, nullptr, nullptr, &status);
     if (!dem) return false;
 
-    const char* paren = std::strchr(dem, '(');
-    size_t      n     = paren ? static_cast<size_t>(paren - dem) : std::strlen(dem);
-    bool        ok    = std::strlen(query) == n && std::strncmp(dem, query, n) == 0;
+    const bool ok = flat_name_matches(dem, query);
     std::free(dem);
     return ok;
 }
@@ -49,6 +85,7 @@ bool name_matches(const char* itanium, const char* query) {
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>
+#include <dlfcn.h>
 
 namespace augment::plat {
 
@@ -104,14 +141,26 @@ const image_syms& image() {
 } // namespace
 
 void* sym_resolve(const char* symbol) {
+    if (!symbol) return nullptr;
+
+    if (void* p = dlsym(RTLD_DEFAULT, symbol)) return p;
+    if (symbol[0] != '_') {
+        char scratch[512];
+        scratch[0] = '_';
+        std::strncpy(scratch + 1, symbol, sizeof(scratch) - 2);
+        scratch[sizeof(scratch) - 1] = '\0';
+        if (void* p = dlsym(RTLD_DEFAULT, scratch)) return p;
+    }
+
     const image_syms& img = image();
-    if (!symbol || !img.ok) return nullptr;
+    if (!img.ok) return nullptr;
 
     for (uint32_t i = 0; i < img.count; ++i) {
         const struct nlist_64& s = img.syms[i];
         if ((s.n_type & N_TYPE) != N_SECT || s.n_value == 0 || s.n_un.n_strx == 0) continue;
         const char* name = img.strs + s.n_un.n_strx;
-        if (name[0] == '_' && name_matches(name + 1, symbol))
+        if (macho_name_equal(name, symbol) ||
+            (name[0] == '_' && name_matches(name, symbol)))
             return reinterpret_cast<void*>(static_cast<uint64_t>(s.n_value) +
                                            static_cast<uint64_t>(img.slide));
     }

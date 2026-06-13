@@ -43,13 +43,17 @@ bool Reader::load(const char* path) {
     m_pbase = off;
 
     each_function([this](const char* flat, const FuncView& fv) {
-        m_rva.emplace(fv.mangled, fv.rva);
+        if (fv.rva) {
+            m_rva.emplace(fv.mangled, fv.rva);
+            m_rva.emplace(flat, fv.rva);
+        }
         m_flat_of.emplace(fv.mangled, flat);
     });
     return true;
 }
 
 void Reader::records(int section, const char* name, std::vector<const uint8_t*>& out) const {
+    if (section < 0 || section >= (int)m_index.size()) return;
     auto& idx = m_index[section];
     auto it = idx.find(name);
     if (it == idx.end()) return;

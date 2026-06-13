@@ -127,9 +127,21 @@ void Registry::register_ptr(const char* symbol, void* ptr) {
 
 void* Registry::resolve_target(const std::string& symbol) {
     if (void* p = plat::sym_resolve(symbol.c_str())) return p;
-    uint64_t rva = manifest::global_reader().rva_of(symbol.c_str());
-    if (!rva) return nullptr;
-    return reinterpret_cast<void*>((uintptr_t)((intptr_t)rva + plat::image_slide()));
+
+    augment::manifest::Reader& reader = manifest::global_reader();
+    augment::manifest::FuncView fv{};
+
+    const uint32_t overloadCount = reader.func_count(symbol.c_str());
+    for (uint32_t i = 0; i < overloadCount; ++i) {
+        if (!reader.func_at(symbol.c_str(), i, &fv) || !fv.mangled || !*fv.mangled) continue;
+        if (void* p = plat::sym_resolve(fv.mangled)) return p;
+    }
+
+    if (reader.func_by_mangled(symbol.c_str(), &fv) && fv.mangled && *fv.mangled) {
+        if (void* p = plat::sym_resolve(fv.mangled)) return p;
+    }
+
+    return nullptr;
 }
 
 bool Registry::install_chain(const std::string& symbol, Chain& chain) {
