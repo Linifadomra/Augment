@@ -9,6 +9,11 @@
 
 namespace augment::manifest { Reader& global_reader() { static Reader r; return r; } }
 
+namespace augment::plat {
+void* sym_resolve(const char* symbol);
+intptr_t image_slide();
+}
+
 extern "C" AUGMENT_API int augment_manifest_load(const char* path) {
     using namespace augment::manifest;
     Reader& r = global_reader();
@@ -27,13 +32,17 @@ extern "C" AUGMENT_API int augment_manifest_load(const char* path) {
         for (auto& s : mk) mp.push_back(s.c_str());
         augment_register_struct(name.c_str(), mp.data(), (unsigned)mp.size());
     };
-    r.each_function([&](const char*, const FuncView& fv) {
+    r.each_function([&](const char* flat, const FuncView& fv) {
         ensure_struct(fv.ret);
         for (uint32_t i = 0; i < fv.nargs; ++i) ensure_struct(fv.args[i].kind);
         std::vector<const char*> atypes;
         for (uint32_t i = 0; i < fv.nargs; ++i) atypes.push_back(fv.args[i].kind);
         augment_register_signature(fv.mangled, fv.member ? 1 : 0, fv.ret,
                                    atypes.data(), (unsigned)atypes.size());
+        if (flat && flat[0] && std::strcmp(flat, fv.mangled) != 0) {
+            augment_register_signature(flat, fv.member ? 1 : 0, fv.ret,
+                                       atypes.data(), (unsigned)atypes.size());
+        }
         ++n;
     });
     return n;
@@ -112,7 +121,12 @@ extern "C" AUGMENT_API int augment_enum_values(const char* name, const AugmentEn
 extern "C" AUGMENT_API int augment_global_addr(const char* name, const char** kind_out, void** addr_out) {
     uint64_t a = 0; const char* k = nullptr;
     if (!augment::manifest::global_reader().global(name, &k, &a)) return 0;
-    *kind_out = k; *addr_out = reinterpret_cast<void*>((uintptr_t)a);
+    *kind_out = k;
+    if (void* resolved = augment::plat::sym_resolve(name)) {
+        *addr_out = resolved;
+        return 1;
+    }
+    *addr_out = reinterpret_cast<void*>((uintptr_t)(a + static_cast<uint64_t>(augment::plat::image_slide())));
     return 1;
 }
 
