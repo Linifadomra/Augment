@@ -2,13 +2,13 @@
 
 #include <ffi.h>
 
-#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
+#include <cstring>
 
 namespace augment::plat {
 void* sym_resolve(const char* symbol);
@@ -201,12 +201,13 @@ extern "C" AUGMENT_API void* augment_make_closure(const char* symbol) {
     return c->code;
 }
 
-extern "C" AUGMENT_API void augment_call(const char* symbol, void** args, unsigned nargs, int instance_index) {
+extern "C" AUGMENT_API int augment_call(const char* symbol, void** args, unsigned nargs,
+                                        void* ret_out, int instance_index) {
     void* fn = augment::plat::sym_resolve(symbol);
-    if (!fn) return;
+    if (!fn) return 0;
 
     auto it = sig_table().find(symbol);
-    if (it == sig_table().end()) return;
+    if (it == sig_table().end()) return 0;
     Signature& sig = it->second;
 
     void* resolved_self = nullptr;
@@ -215,9 +216,9 @@ extern "C" AUGMENT_API void augment_call(const char* symbol, void** args, unsign
 
     if (sig.is_member && nargs + 1 == actual_argc) {
         const char* self_view = augment_fn_self_view(symbol);
-        if (!self_view) return;
+        if (!self_view) return 0;
         resolved_self = augment_get_instance(self_view, instance_index);
-        if (!resolved_self) return;
+        if (!resolved_self) return 0;
 
         static thread_local void* tl_args[64];
         tl_args[0] = &resolved_self;
@@ -229,11 +230,16 @@ extern "C" AUGMENT_API void augment_call(const char* symbol, void** args, unsign
     ffi_cif cif;
     if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, actual_argc,
                      sig.rtype, sig.atypes.data()) != FFI_OK)
-        return;
+        return 0;
 
-    char retbuf[64];
+    char retbuf[64] = {};
     void* ret = (sig.rtype == &ffi_type_void) ? nullptr : static_cast<void*>(retbuf);
     ffi_call(&cif, reinterpret_cast<void (*)()>(fn), ret, actual_args);
+
+    if (ret_out && ret)
+        std::memcpy(ret_out, retbuf, sig.rtype->size);
+
+    return 1;
 }
 
 extern "C" AUGMENT_API void augment_register_instance(const char* class_name, void* ptr) {
