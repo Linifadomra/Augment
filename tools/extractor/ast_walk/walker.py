@@ -34,9 +34,9 @@ def _resource_dir() -> str:
 _PROJECT_ROOT: Optional[Path] = None
 
 BUILTIN_FOLDER_EXCLUSIONS = {
-    "augment/",  # Augment
-    "dobby/",    # Dobby
-    "_deps/",    # CPM Dependencies
+    "augment",  # Augment
+    "dobby",    # Dobby
+    "_deps",    # CPM Dependencies
 }
 _EXTRA_FOLDER_EXCLUSIONS: set[str] = set()
 
