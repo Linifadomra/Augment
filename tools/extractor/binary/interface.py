@@ -23,3 +23,6 @@ class DebugInfoBackend(ABC):
         RVAs are plain ints (not hex strings) at this layer; the merge
         step converts to the "0x..." string the manifest expects.
         """
+
+    def extract_struct_layouts(self, binary_path: str) -> Dict[str, Dict]:
+        return {}
