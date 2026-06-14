@@ -3,6 +3,7 @@ extractor/binary/pdb.py
 """
 from __future__ import annotations
 
+import glob
 import re
 import shutil
 import subprocess
@@ -49,6 +50,68 @@ _ADDR_RE = re.compile(r'addr\s*=\s*([0-9a-fA-F]+)\s*:\s*([0-9a-fA-F]+)', re.IGNO
 
 _PROC_KINDS = frozenset({"S_GPROC32", "S_LPROC32", "S_GPROC32_ID", "S_LPROC32_ID"})
 
+_REC_START_RE = re.compile(r'^\s*(0x[0-9A-Fa-f]+)\s*\|\s*LF_(\w+)\b(.*)')
+_NAME_RE      = re.compile(r'`([^`]+)`')
+_FIELDLIST_RE = re.compile(r'field list:\s*(0x[0-9A-Fa-f]+|<no type>)')
+_SIZEOF_RE    = re.compile(r'sizeof\s+(\d+)')
+_MEMBER_RE    = re.compile(r'-\s*LF_MEMBER\s*\[name = `(.+?)`,.*?\boffset = (-?\d+)')
+
+
+def _parse_types_stream(lines) -> Dict[str, Dict]:
+    classes: Dict[str, Dict] = {}
+    fieldlists: Dict[str, Dict[str, int]] = {}
+
+    cur_kind = None
+    cur_name = None
+    cur_fl = None
+    cur_size = None
+    cur_members: Dict[str, int] = {}
+
+    def flush():
+        if cur_kind in ("CLASS", "STRUCTURE") and cur_name:
+            prev = classes.get(cur_name)
+            if prev is None or (
+                prev.get("fieldlist") in (None, "<no type>")
+                and cur_fl not in (None, "<no type>")
+            ):
+                classes[cur_name] = {"size": cur_size, "fieldlist": cur_fl}
+        elif cur_kind == "FIELDLIST" and cur_id:
+            fieldlists[cur_id] = cur_members
+
+    cur_id = None
+    for line in lines:
+        m = _REC_START_RE.match(line)
+        if m:
+            flush()
+            cur_id, cur_kind, rest = m.group(1), m.group(2), m.group(3)
+            cur_name = cur_fl = cur_size = None
+            cur_members = {}
+            if cur_kind in ("CLASS", "STRUCTURE"):
+                nm = _NAME_RE.search(rest)
+                cur_name = nm.group(1) if nm else None
+            continue
+        if cur_kind in ("CLASS", "STRUCTURE"):
+            fm = _FIELDLIST_RE.search(line)
+            if fm:
+                cur_fl = fm.group(1)
+            sm = _SIZEOF_RE.search(line)
+            if sm:
+                cur_size = int(sm.group(1))
+        elif cur_kind == "FIELDLIST":
+            mm = _MEMBER_RE.search(line)
+            if mm:
+                cur_members[mm.group(1)] = int(mm.group(2))
+    flush()
+
+    out: Dict[str, Dict] = {}
+    for name, info in classes.items():
+        fl = info.get("fieldlist")
+        out[name] = {
+            "size":   info.get("size"),
+            "fields": fieldlists.get(fl, {}) if fl else {},
+        }
+    return out
+
 def _parse_section_headers(text: str) -> Dict[int, int]:
     """Return {section_index: virtual_address_int}."""
     sections: Dict[int, int] = {}
@@ -64,11 +127,28 @@ def _parse_section_headers(text: str) -> Dict[int, int]:
                 sections[current] = int(m.group(1), 16)
     return sections
 
+def _parse_pdbutil_int(s: str) -> int:
+    """
+    pdbutil prints address fields as either:
+      - plain decimal ("17573936")  — section-relative offsets, code sizes
+      - hex without 0x prefix ("010C2830", "1000")  — when hex chars are present
+      - hex with 0x prefix ("0x1000")  — rare, but handle it
+    Detect by presence of a–f; only base-10 chars are ambiguous.
+    """
+    s = s.strip()
+    if s.startswith(("0x", "0X")):
+        return int(s, 16)
+
+    if any(c in s for c in "abcdefABCDEF"):
+        return int(s, 16)
+
+    return int(s)
+
 def _resolve_rva(seg_str: str, off_str: str, section_map: Dict[int, int]) -> Optional[int]:
     """Convert a seg:off pair to an integer RVA, or None if unresolvable."""
     try:
-        seg = int(seg_str, 16)
-        off = int(off_str, 16)
+        seg = _parse_pdbutil_int(seg_str)
+        off = _parse_pdbutil_int(off_str)
     except (ValueError, TypeError):
         return None
     if seg == 0:
@@ -134,3 +214,21 @@ class PdbBackend(DebugInfoBackend):
         text = result.stdout
         section_map = _parse_section_headers(text)
         return _parse_function_rvas(text, section_map)
+
+    def extract_struct_layouts(self, binary_path: str) -> Dict[str, Dict]:
+        if not _PDBUTIL:
+            return {}
+        proc = subprocess.Popen(
+            [_PDBUTIL, "dump", "-types", binary_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        try:
+            layouts = _parse_types_stream(proc.stdout)
+        finally:
+            proc.stdout.close()
+            proc.wait()
+        return layouts

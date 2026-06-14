@@ -388,7 +388,7 @@ intptr_t image_slide() {
     if (dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
     auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
     if (nt->Signature != IMAGE_NT_SIGNATURE) return 0;
-    return (intptr_t)base - (intptr_t)nt->OptionalHeader.ImageBase;
+    return reinterpret_cast<intptr_t>(base);
 }
 
 } // namespace augment::plat

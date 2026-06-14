@@ -126,19 +126,27 @@ void Registry::register_ptr(const char* symbol, void* ptr) {
 }
 
 void* Registry::resolve_target(const std::string& symbol) {
-    if (void* p = plat::sym_resolve(symbol.c_str())) return p;
+    if (void* p = plat::sym_resolve(symbol.c_str()))
+        return p;
+
+    uint64_t rva = manifest::global_reader().rva_of(symbol.c_str());
+    if (rva) {
+        if (void* p = reinterpret_cast<void*>(static_cast<uintptr_t>(rva + plat::image_slide())))
+            return p;
+    }
 
     augment::manifest::Reader& reader = manifest::global_reader();
     augment::manifest::FuncView fv{};
-
     const uint32_t overloadCount = reader.func_count(symbol.c_str());
     for (uint32_t i = 0; i < overloadCount; ++i) {
         if (!reader.func_at(symbol.c_str(), i, &fv) || !fv.mangled || !*fv.mangled) continue;
-        if (void* p = plat::sym_resolve(fv.mangled)) return p;
+        if (void* p = plat::sym_resolve(fv.mangled))
+            return p;
     }
 
     if (reader.func_by_mangled(symbol.c_str(), &fv) && fv.mangled && *fv.mangled) {
-        if (void* p = plat::sym_resolve(fv.mangled)) return p;
+        if (void* p = plat::sym_resolve(fv.mangled))
+            return p;
     }
 
     return nullptr;
@@ -327,7 +335,7 @@ const char* augment_inspect(const char* symbol) {
 }
 
 void* augment_resolve(const char* symbol) {
-    return augment::plat::sym_resolve(symbol);
+    return augment::Registry::instance().resolve_target(std::string(symbol));
 }
 
 } // extern "C"

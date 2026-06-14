@@ -155,6 +155,6 @@ function(augment_manifest)
 
     add_dependencies(gen_manifest_phase1 "${AM_TARGET}_augment_phase1")
     add_dependencies(gen_manifest_phase2 "${AM_TARGET}_augment_phase2")
-    add_dependencies(gen_manifest "${AM_TARGET}_augment_phase2")
+    add_dependencies(gen_manifest "${AM_TARGET}_augment_phase1" "${AM_TARGET}_augment_phase2")
 
 endfunction()

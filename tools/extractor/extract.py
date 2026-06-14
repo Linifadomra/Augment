@@ -51,6 +51,21 @@ def _richness(fn: dict) -> int:
     )
 
 
+def _struct_score(s: dict) -> int:
+    fields = s.get("fields") or []
+    if any((f.get("offset") is None or f.get("offset") < 0) for f in fields):
+        return 0
+    return 1 + int(s.get("size") or 0) + len(fields)
+
+
+def _score(key: str, record: dict) -> int:
+    if key == "functions":
+        return _richness(record)
+    if key == "structs":
+        return _struct_score(record)
+    return 0
+
+
 def _require_libclang() -> None:
     try:
         import clang.cindex  # noqa: F401
@@ -190,9 +205,9 @@ def phase1(
                             if existing is None:
                                 seen_index[key][dk] = len(combined[key])
                                 combined[key].append(record)
-                                richness_cache[key].append(_richness(record))
-                            elif key == "functions":
-                                r = _richness(record)
+                                richness_cache[key].append(_score(key, record))
+                            else:
+                                r = _score(key, record)
                                 if r > richness_cache[key][existing]:
                                     combined[key][existing] = record
                                     richness_cache[key][existing] = r
@@ -238,6 +253,25 @@ def phase1(
     return combined
 
 
+def _apply_struct_layouts(structs: List[dict], layouts: Dict[str, dict]) -> int:
+    filled = 0
+    for s in structs:
+        lay = layouts.get(s.get("name"))
+        if not lay:
+            continue
+        lfields = lay.get("fields") or {}
+        for f in s.get("fields") or []:
+            off = f.get("offset")
+            if off is None or off < 0:
+                new_off = lfields.get(f.get("name"))
+                if new_off is not None:
+                    f["offset"] = new_off
+                    filled += 1
+        if (s.get("size") or 0) <= 1 and lay.get("size"):
+            s["size"] = lay["size"]
+    return filled
+
+
 # Phase 2: binary backend + merge + pack
 def phase2(
     ast_manifest_path: str,
@@ -275,6 +309,11 @@ def phase2(
 
     from extractor.merge import merge
     manifest = merge(ast, rva_map, exclude_prefixes=exclude_prefixes)
+
+    struct_layouts = backend.extract_struct_layouts(binary_path)
+    if struct_layouts:
+        filled = _apply_struct_layouts(manifest["structs"], struct_layouts)
+        log.info("filled %d unresolved struct field offsets from binary layout", filled)
 
     from extractor.output.pack import pack
     out = Path(output_path)
