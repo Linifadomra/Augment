@@ -96,28 +96,17 @@ _EMPTY: dict = {"structs": (), "functions": (), "enums": (), "typedefs": ()}
 def _walk_one(args: Tuple[str, List[str], str, Optional[str]]) -> dict:
     source_file, flags, project_root, pch_path = args
 
-    from extractor.logger import get_logger
-    log = get_logger("walker.worker")
-
-    log.debug("parsing TU: %s", source_file)
-
     from extractor.ast_walk.walker import set_project_root, walk
     set_project_root(project_root)
 
     try:
         result = walk(source_file, flags, pch_path=pch_path)
-        log.debug("  done: %s", {k: len(v) for k, v in result.items()})
+        result["_errors"] = []
         return result
     except RuntimeError as exc:
-        log.error("walker error in %s: %s", source_file, exc)
-        return _EMPTY
+        return {**_EMPTY, "_errors": [f"{source_file}: {exc}"]}
     except Exception as exc:
-        log.error(
-            "Failed to parse TU. File will be skipped.\n"
-            "  path : %s\n  flags: %s\n  error: %s: %s",
-            source_file, " ".join(flags), type(exc).__name__, exc,
-        )
-        return _EMPTY
+        return {**_EMPTY, "_errors": [f"{source_file}: {type(exc).__name__}: {exc}"]}
 
 
 def phase1(
@@ -192,6 +181,8 @@ def phase1(
         with Pool(processes=workers) as pool:
             for result in pool.imap_unordered(_walk_one, items, chunksize=chunksize):
                 progress.increment()
+                for err in result.pop("_errors", []):
+                    log.error(err)
                 try:
                     if not any(result.values()):
                         skipped += 1

@@ -383,9 +383,16 @@ def _flat(spelling: str, parent: Optional[_cx.Cursor]) -> str:
     return base.replace("::", "_").replace(" ", "")
 
 def _check_diagnostics(tu: Any, path: str) -> list[str]:
-    """
-    Return a list of error message strings for any Error/Fatal diagnostics.
-    """
     errors = [d for d in tu.diagnostics
               if d.severity >= _cx.Diagnostic.Error]
-    return [d.spelling for d in errors]
+    msgs = []
+    for d in errors:
+        loc = d.location
+        if loc.file:
+            loc_str = f"{loc.file.name}:{loc.line}:{loc.column}"
+        else:
+            loc_str = path
+        msgs.append(f"{loc_str}: {d.spelling}")
+        for child in d.children:
+            msgs.append(f"  note: {child.spelling}")
+    return msgs
