@@ -130,7 +130,7 @@ def build_pch(
             "-DBSWAP64(x)=__builtin_bswap64(x)",
         ])
 
-    for flags in flag_map.values():
+    for tu_src, flags in flag_map.items():
         i = 0
         while i < len(flags):
             flag = flags[i]
@@ -141,7 +141,14 @@ def build_pch(
                 i += 1
                 continue
 
-            if flag.startswith(("-I", "-D", "-std", "-include")):
+            if flag == "-include":
+                i += 2
+                continue
+            if flag.startswith("-include"):
+                i += 1
+                continue
+
+            if flag.startswith(("-I", "-D", "-std")):
                 if flag.startswith("-I"):
                     if len(flag) > 2:
                         flag = "-I" + Path(flag[2:]).as_posix()
