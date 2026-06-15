@@ -73,13 +73,21 @@ def merge(
     rva_map: Dict[str, int],
     exclude_prefixes: tuple[str, ...] = (),
 ) -> Dict[str, List[dict]]:
-    functions = _merge_functions(ast.get("functions", []), rva_map, exclude_prefixes)
-    _apply_flat_names(functions, exclude_prefixes)
+    rva_keys = list(rva_map.keys())
+    ast_fns = ast.get("functions", [])
+    ast_mangled = [fn.get("mangled", "") for fn in ast_fns if fn.get("mangled")]
+    
+    all_mangled_strings = list(set(rva_keys + ast_mangled))
+    global_dm_cache = _demangle_batch(all_mangled_strings)
+
+    functions = _merge_functions(ast_fns, rva_map, global_dm_cache, exclude_prefixes)
+    _apply_flat_names(functions, global_dm_cache, exclude_prefixes)
 
     structs   = sorted(ast.get("structs",   []), key=lambda s: s["name"])
     enums     = sorted(ast.get("enums",     []), key=lambda e: e["name"])
     typedefs  = sorted(ast.get("typedefs",  []), key=lambda t: t["alias"])
-    functions.sort(key=lambda f: (f["flat"], f["mangled"]))
+    functions.sort(key=lambda f: (f.get("flat", ""), f["mangled"]))
+    
     return {
         "version":   2,
         "functions": functions,
@@ -161,12 +169,10 @@ def _demangle_batch(mangled: List[str]) -> Dict[str, str]:
     return mapping
 
 
-def _apply_flat_names(functions: List[dict], exclude_prefixes: tuple) -> None:
-    mangled = [f["mangled"] for f in functions]
-    dm = _demangle_batch(mangled)
+def _apply_flat_names(functions: List[dict], dm_cache: Dict[str, str], exclude_prefixes: tuple) -> None:
     to_remove = []
     for i, fn in enumerate(functions):
-        dem = dm.get(fn["mangled"], fn["mangled"].lstrip("_"))
+        dem = dm_cache.get(fn["mangled"], fn["mangled"].lstrip("_"))
         flat = _clean_flat(dem)
         if _is_excluded(flat, exclude_prefixes):
             to_remove.append(i)
@@ -183,32 +189,24 @@ def _rva_hex(rva: int) -> str:
 def _merge_functions(
     ast_fns: List[dict],
     rva_map: Dict[str, int],
+    dm_cache: Dict[str, str],
     exclude_prefixes: tuple,
 ) -> List[dict]:
     out: List[dict] = []
     consumed_rva_keys: set = set()
     consumed_rva_values: set = set()
 
-    rva_keys = list(rva_map.keys())
-    print(f"[_merge_functions] rva_keys count={len(rva_keys)}")
-    rva_dm = _demangle_batch(rva_keys)
-    print(f"[_merge_functions] rva_dm size={len(rva_dm)}")
-
-    clean_rva_lookup = {}
-    for k in rva_keys:
-        if rva_map[k] is None:
+    clean_rva_lookup: Dict[str, List[tuple[str, int]]] = {}
+    for k, v in rva_map.items():
+        if v is None:
             continue
-
         raw_norm = _normalize_for_matching(_clean_flat(k))
-        dm_norm = _normalize_for_matching(_clean_flat(rva_dm.get(k, k)))
+        dm_norm = _normalize_for_matching(_clean_flat(dm_cache.get(k, k)))
 
-        clean_rva_lookup[raw_norm] = (k, rva_map[k])
-        clean_rva_lookup[dm_norm] = (k, rva_map[k])
-
-    ast_mangled = [fn.get("mangled", "") for fn in ast_fns if fn.get("mangled")]
-    print(f"[_merge_functions] ast_mangled count={len(ast_mangled)}")
-    ast_dm = _demangle_batch(ast_mangled)
-    print(f"[_merge_functions] ast_dm size={len(ast_dm)}")
+        entry = (k, v)
+        clean_rva_lookup.setdefault(raw_norm, []).append(entry)
+        if dm_norm != raw_norm:
+            clean_rva_lookup.setdefault(dm_norm, []).append(entry)
 
     for fn in ast_fns:
         if _is_generated_artifact(fn):
@@ -223,9 +221,9 @@ def _merge_functions(
 
         if rva_int is None and mangled:
             try:
-                clean = _normalize_for_matching(_clean_flat(ast_dm.get(mangled, mangled)))
+                clean = _normalize_for_matching(_clean_flat(dm_cache.get(mangled, mangled)))
                 if clean in clean_rva_lookup:
-                    used_key, rva_int = clean_rva_lookup[clean]
+                    used_key, rva_int = clean_rva_lookup[clean][0]
             except Exception:
                 pass
 
@@ -233,17 +231,17 @@ def _merge_functions(
         if not fn.get("member") and fn.get("args"):
             first_arg = fn["args"][0]
             if first_arg.get("kind") == "ptr":
-                base_name = fn.get("flat") or fn.get("mangled") or ""
+                base_name = fn.get("flat") or mangled or ""
                 m = re.match(r"(?P<prefix>[^_]+)_(?P<method>.+)$", base_name)
                 if m:
                     prefix = m.group("prefix")
                     method = m.group("method")
-                    for cand in (prefix + "_c"):
+                    for cand in (f"{prefix}_c",):
                         target_clean = _normalize_for_matching(f"{cand}_{method}")
                         if target_clean in clean_rva_lookup:
                             detected_self = cand
-                            if used_key is None:
-                                used_key, rva_int = clean_rva_lookup[target_clean]
+                            if rva_int is None:
+                                used_key, rva_int = clean_rva_lookup[target_clean][0]
                             break
 
         record = dict(fn)

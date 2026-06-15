@@ -42,18 +42,33 @@ def _write_stale_hash(output_pch: str, compile_commands_path: str) -> None:
 def _run_dep_scan(args):
     src, flags, project_root = args
     import subprocess
+    from pathlib import Path
+
     try:
-        result = subprocess.run(
-            ["clang++", "-M", src] + flags,
-            capture_output=True, text=True, timeout=10
-        )
-        return [
-            line.strip().rstrip("\\").strip()
-            for line in result.stdout.splitlines()
-            if line.strip().rstrip("\\").strip().endswith(".h")
-            and project_root in line
-        ]
-    except (subprocess.TimeoutExpired, OSError):
+        cmd = ["clang++", "-M", src] + flags
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            return []
+
+        root = Path(project_root).resolve().as_posix().lower()
+        headers = []
+
+        for line in result.stdout.splitlines():
+            dep = line.strip().rstrip("\\").strip()
+            dep_path = Path(dep)
+            if dep_path.suffix not in (".h", ".hpp", ".hh"):
+                continue
+
+            try:
+                dep_norm = dep_path.resolve().as_posix().lower()
+            except Exception:
+                continue
+
+            if dep_norm.startswith(root):
+                headers.append(dep_path.as_posix())
+
+        return headers
+    except Exception:
         return []
 
 
@@ -77,6 +92,8 @@ def _extract_include_order(flag_map: dict, project_root: str) -> list[str]:
 
     return [h for h, _ in sorted(seen.items(), key=lambda x: x[1])]
 
+def normalize_include(p: str) -> str:
+    return Path(p).as_posix()
 
 def build_pch(
     project_root: str,
@@ -87,6 +104,7 @@ def build_pch(
     exclude_paths: tuple[str, ...] = (),
 ) -> Optional[str]:
     import clang.cindex as cl
+    import sys
     from extractor.logger import get_logger
     log = get_logger("pch")
 
@@ -96,16 +114,50 @@ def build_pch(
 
     merged_flags: list[str] = []
     seen_flags: set[str] = set()
+    
+    if sys.platform == "win32":
+        merged_flags.extend([
+            "-target", "x86_64-pc-windows-msvc",
+            "-fms-compatibility",
+            "-fms-extensions",
+            "-fms-volatile",
+            "-fdeclspec",
+            "-D__AST_WALK_PCH_GENERATION__",
+            "-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH",
+            "-D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS",
+            "-DBSWAP16(x)=__builtin_bswap16(x)",
+            "-DBSWAP32(x)=__builtin_bswap32(x)",
+            "-DBSWAP64(x)=__builtin_bswap64(x)",
+        ])
+
     for flags in flag_map.values():
-        for i, flag in enumerate(flags):
+        i = 0
+        while i < len(flags):
+            flag = flags[i]
+            if flag.startswith(("/", "-Wno-")) and not flag.startswith(("-I", "-D", "-std", "-include")):
+                i += 1
+                continue
+            if flag.startswith(("-std:", "-std=c++11", "-std=c++14", "-std=c++17")):
+                i += 1
+                continue
+
             if flag.startswith(("-I", "-D", "-std", "-include")):
+                if flag.startswith("-I"):
+                    if len(flag) > 2:
+                        flag = "-I" + Path(flag[2:]).as_posix()
+                    elif i + 1 < len(flags):
+                        flag = f"-I{Path(flags[i + 1]).as_posix()}"
+                        i += 1
+                elif flag.startswith("-D") and "\\" in flag:
+                    flag = flag.replace("\\", "/")
+
                 if flag not in seen_flags:
                     seen_flags.add(flag)
                     merged_flags.append(flag)
-                    if flag in ("-I", "-D") and i + 1 < len(flags):
-                        merged_flags.append(flags[i + 1])
+            i += 1
 
     log.info("PCH: merged %d unique flags from %d TUs", len(merged_flags), len(flag_map))
+    merged_flags.append("-std=c++20")
 
     ordered_headers = _extract_include_order(flag_map, project_root)
     filtered = [
@@ -126,18 +178,17 @@ def build_pch(
         ) as f:
             umbrella_path = f.name
             for h in filtered:
-                f.write(f'#include "{h}"\n')
+                f.write(f'#include "{normalize_include(h)}"\n')
+
+        clang_args = ["-x", "c++-header"] + merged_flags
 
         from extractor.utility.spinner import Progress
         with Progress("PCH", total=1) as progress:
             index = cl.Index.create()
             tu = index.parse(
                 umbrella_path,
-                args=merged_flags,
-                options=(
-                    cl.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES |
-                    cl.TranslationUnit.PARSE_PRECOMPILED_PREAMBLE
-                ),
+                args=clang_args, 
+                options=cl.TranslationUnit.PARSE_NONE
             )
             progress.increment()
 
