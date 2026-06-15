@@ -164,6 +164,7 @@ def _extract_flags(entry: dict, file_path: str) -> List[str]:
 
     if sys.platform == "win32":
         flags = _normalize_msvc_flags(flags)
+        flags.append("-D_NULLPTR_T")
 
     return flags
 
