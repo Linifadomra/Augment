@@ -196,17 +196,26 @@ def _merge_functions(
     consumed_rva_keys: set = set()
     consumed_rva_values: set = set()
 
+    mangled_rva_lookup: Dict[int, str] = {}
+    for k, v in rva_map.items():
+        if v is not None and re.match(r'^(_Z|\?|@)', k):
+            if v not in mangled_rva_lookup:
+                mangled_rva_lookup[v] = k
+
     clean_rva_lookup: Dict[str, List[tuple[str, int]]] = {}
     for k, v in rva_map.items():
         if v is None:
             continue
-        raw_norm = _normalize_for_matching(_clean_flat(k))
-        dm_norm = _normalize_for_matching(_clean_flat(dm_cache.get(k, k)))
+        try:
+            raw_norm = _normalize_for_matching(_clean_flat(k))
+            dm_norm = _normalize_for_matching(_clean_flat(dm_cache.get(k, k)))
 
-        entry = (k, v)
-        clean_rva_lookup.setdefault(raw_norm, []).append(entry)
-        if dm_norm != raw_norm:
-            clean_rva_lookup.setdefault(dm_norm, []).append(entry)
+            entry = (k, v)
+            clean_rva_lookup.setdefault(raw_norm, []).append(entry)
+            if dm_norm != raw_norm:
+                clean_rva_lookup.setdefault(dm_norm, []).append(entry)
+        except Exception:
+            pass
 
     for fn in ast_fns:
         if _is_generated_artifact(fn):
@@ -228,21 +237,24 @@ def _merge_functions(
                 pass
 
         detected_self: Optional[str] = None
-        if not fn.get("member") and fn.get("args"):
-            first_arg = fn["args"][0]
-            if first_arg.get("kind") == "ptr":
-                base_name = fn.get("flat") or mangled or ""
-                m = re.match(r"(?P<prefix>[^_]+)_(?P<method>.+)$", base_name)
-                if m:
-                    prefix = m.group("prefix")
-                    method = m.group("method")
-                    for cand in (f"{prefix}_c",):
-                        target_clean = _normalize_for_matching(f"{cand}_{method}")
-                        if target_clean in clean_rva_lookup:
-                            detected_self = cand
-                            if rva_int is None:
-                                used_key, rva_int = clean_rva_lookup[target_clean][0]
-                            break
+        try:
+            if not fn.get("member") and fn.get("args"):
+                first_arg = fn["args"][0]
+                if first_arg.get("kind") == "ptr":
+                    base_name = fn.get("flat") or mangled or ""
+                    m = re.match(r"(?P<prefix>[^_]+)_(?P<method>.+)$", base_name)
+                    if m:
+                        prefix = m.group("prefix")
+                        method = m.group("method")
+                        for cand in (f"{prefix}_c",):
+                            target_clean = _normalize_for_matching(f"{cand}_{method}")
+                            if target_clean in clean_rva_lookup:
+                                detected_self = cand
+                                if rva_int is None:
+                                    used_key, rva_int = clean_rva_lookup[target_clean][0]
+                                break
+        except Exception:
+            pass
 
         record = dict(fn)
         if detected_self:
@@ -259,16 +271,11 @@ def _merge_functions(
             if re.match(r'^(_Z|\?|@)', used_key):
                 record["mangled"] = used_key
             elif rva_int is not None:
-                for k2, v2 in rva_map.items():
-                    if v2 == rva_int and re.match(r'^(_Z|\?|@)', k2):
-                        record["mangled"] = k2
-                        break
+                if rva_int in mangled_rva_lookup:
+                    record["mangled"] = mangled_rva_lookup[rva_int]
 
-        record["loc"] = (
-            record["loc"].replace("\\", "/")
-            if isinstance(record.get("loc"), str)
-            else record.get("loc")
-        )
+        if isinstance(record.get("loc"), str):
+            record["loc"] = record["loc"].replace("\\", "/")
 
         out.append(record)
 
@@ -277,27 +284,30 @@ def _merge_functions(
         if rva_int is not None:
             consumed_rva_values.add(rva_int)
 
-    rva_to_keys: Dict[int, List[str]] = {}
-    for k, v in rva_map.items():
-        if v is not None:
-            rva_to_keys.setdefault(v, []).append(k)
+    try:
+        rva_to_keys: Dict[int, List[str]] = {}
+        for k, v in rva_map.items():
+            if v is not None:
+                rva_to_keys.setdefault(v, []).append(k)
 
-    for rva_int, keys in rva_to_keys.items():
-        if rva_int in consumed_rva_values:
-            continue
-        chosen: Optional[str] = None
-        for k in keys:
-            if '::' in k and not k.endswith('::'):
-                chosen = k
-                break
-        if not chosen:
+        for rva_int, keys in rva_to_keys.items():
+            if rva_int in consumed_rva_values:
+                continue
+            chosen: Optional[str] = None
             for k in keys:
-                if '_c' in k or '::' in k:
+                if '::' in k and not k.endswith('::'):
                     chosen = k
                     break
-        if not chosen:
-            chosen = keys[0]
-        out.append(_opaque_stub(chosen, rva_int))
+            if not chosen:
+                for k in keys:
+                    if '_c' in k or '::' in k:
+                        chosen = k
+                        break
+            if not chosen:
+                chosen = keys[0]
+            out.append(_opaque_stub(chosen, rva_int))
+    except Exception:
+        pass
 
     return out
 
