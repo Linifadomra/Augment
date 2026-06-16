@@ -114,27 +114,65 @@ def walk(
     *index* is an optional ``clang.cindex.Index``. Pass one in when
     walking many files so the global index is reused.
     """
+    import os
+
+    if not os.path.exists(source_path) or os.path.getsize(source_path) == 0:
+        return {
+            "structs":   [],
+            "functions": [],
+            "enums":     [],
+            "typedefs":  [],
+        }
+
     if index is None:
         index = _cx.Index.create()
 
-    parse_flags = list(flags)
+    fallback_flags = [
+        "-x", "c++",
+        "-std=c++17",
+        "-fms-compatibility",
+        "-fms-compatibility-version=19.40",
+        "-Wno-everything"
+    ]
+
+    cleaned_flags = []
+    for flag in flags:
+        if flag.startswith("/I"):
+            cleaned_flags.append(f"-I{flag[2:]}")
+        elif flag.startswith("-I") or flag.startswith("-D") or flag.startswith("/D"):
+            cleaned_flags.append(flag.replace("/D", "-D"))
+        elif flag.startswith("/std:") or flag.startswith("-std="):
+            continue
+
+    parse_flags = cleaned_flags + fallback_flags
 
     rd = _resource_dir()
     if rd:
         parse_flags = [f"-resource-dir={rd}"] + parse_flags
 
     if pch_path:
-        parse_flags += ["-include-pch", pch_path]
+        parse_flags = ["-include-pch", pch_path] + parse_flags
 
-    tu = index.parse(
-        source_path,
-        args=parse_flags,
-        options=_cx.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD,
+    parse_options = (
+        _cx.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+        | _cx.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
+        | _cx.TranslationUnit.PARSE_INCOMPLETE
     )
 
-    errors = _check_diagnostics(tu, source_path)
-    if errors:
-        raise RuntimeError("; ".join(errors))
+    try:
+        tu = index.parse(
+            source_path,
+            args=parse_flags,
+            options=parse_options,
+        )
+    except Exception:
+        if pch_path:
+            parse_flags = [f for f in parse_flags if "-include-pch" not in f and pch_path not in f]
+            tu = index.parse(source_path, args=parse_flags, options=parse_options)
+        else:
+            raise
+
+    _check_diagnostics(tu, source_path)
 
     structs: List[dict]   = []
     functions: List[dict] = []

@@ -76,6 +76,11 @@ def _normalize_msvc_flags(flags: list[str]) -> list[str]:
             result.append(STD[tok])
         elif DROP.match(tok):
             pass
+        elif re.match(r'^[/-]FI(.+)', tok):
+            result += ["-include", re.match(r'^[/-]FI(.+)', tok).group(1)]
+        elif tok in ("/FI", "-FI") and i + 1 < len(flags):
+            result += ["-include", flags[i + 1]]
+            i += 1
         # /external:I<path> or -external:I<path>
         elif re.match(r'^[/-]external:I(.+)', tok):
             result += ["-isystem", re.match(r'^[/-]external:I(.+)', tok).group(1)]
@@ -159,6 +164,7 @@ def _extract_flags(entry: dict, file_path: str) -> List[str]:
 
     if sys.platform == "win32":
         flags = _normalize_msvc_flags(flags)
+        flags.append("-D_NULLPTR_T")
 
     return flags
 
@@ -183,6 +189,9 @@ def _strip_non_flags(argv: List[str], file_path: str) -> List[str]:
             continue
         if arg in ("-MF", "-MT", "-MQ"):
             skip_next = True
+            continue
+        if arg.startswith("/FI") or arg.startswith("-FI"):
+            flags.append(arg)
             continue
         if not arg.startswith("-"):
             arg_path = Path(arg)
