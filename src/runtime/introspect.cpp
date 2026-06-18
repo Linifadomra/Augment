@@ -1,5 +1,7 @@
 #include "augment/augment.hpp"
 #include "augment/manifest_internal.hpp"
+#include "internal.hpp"
+
 #include <string>
 #include <vector>
 #include <set>
@@ -141,6 +143,16 @@ extern "C" AUGMENT_API const char* augment_fn_ret(const char* mangled) {
 }
 
 extern "C" AUGMENT_API void augment_mem_read(void* base, int offset, const char* kind, void* out) {
+    if (!out) {
+        augment_log("augment", "augment_mem_read: null 'out' pointer (base=%p, offset=%d, kind=%s)\n",
+                base, offset, kind ? kind : "<null>");
+        return;
+    }
+    if (!base) {
+        augment_log("augment", "augment_mem_read: null 'base' pointer (offset=%d, kind=%s)\n",
+                offset, kind ? kind : "<null>");
+        return;
+    }
     char* p = (char*)base + offset;
     if      (!std::strcmp(kind, "i8"))  *(int8_t*)out   = *(int8_t*)p;
     else if (!std::strcmp(kind, "u8"))  *(uint8_t*)out  = *(uint8_t*)p;
@@ -156,6 +168,16 @@ extern "C" AUGMENT_API void augment_mem_read(void* base, int offset, const char*
 }
 
 extern "C" AUGMENT_API void augment_mem_write(void* base, int offset, const char* kind, const void* in) {
+    if (!in) {
+        augment_log("augment", "augment_mem_write: null 'in' pointer (base=%p, offset=%d, kind=%s)\n",
+                base, offset, kind ? kind : "<null>");
+        return;
+    }
+    if (!base) {
+        augment_log("augment", "augment_mem_write: null 'base' pointer (offset=%d, kind=%s)\n",
+                offset, kind ? kind : "<null>");
+        return;
+    }
     char* p = (char*)base + offset;
     if      (!std::strcmp(kind, "i8"))  *(int8_t*)p   = *(const int8_t*)in;
     else if (!std::strcmp(kind, "u8"))  *(uint8_t*)p  = *(const uint8_t*)in;

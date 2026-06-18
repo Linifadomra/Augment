@@ -18,6 +18,8 @@
 #include "augment/manifest_internal.hpp"
 #include "augment/augment.hpp"
 
+#include "internal.hpp"
+
 #include <cstdarg>
 #include <vector>
 #include <mutex>
@@ -29,7 +31,7 @@ void augment_set_logger(AugmentLogFn fn) {
     s_logger = fn;
 }
 
-static void augment_log(const char* tag, const char* fmt, ...) {
+void augment_log(const char* tag, const char* fmt, ...) {
     char buf[512];
     va_list args;
     va_start(args, fmt);
