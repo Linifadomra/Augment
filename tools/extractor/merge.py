@@ -45,6 +45,104 @@ def _is_generated_artifact(fn: dict) -> bool:
     return "augment_generated" in loc or "_AugmentPtrReg_" in sv
 
 
+def _is_cold_block(mangled: str) -> bool:
+    return ".cold." in (mangled or "")
+
+
+def _is_mangled(name: str) -> bool:
+    return bool(re.match(r'^_?(_Z|\?|@)', name or ""))
+
+
+_BAD_PTR_VIEWS = frozenset({"int", "i32", "u32", "void"})
+
+# Legacy actor classes libclang often sees as int* in Execute hooks.
+_LEGACY_STRUCT_PATCHES = {
+    "do_class": {
+        "size": 0xC84,
+        "fields": [{"name": "mAction", "offset": 0x5F2, "kind": "i16"}],
+    },
+    "ni_class": {
+        "size": 0xB0C,
+        "fields": [{"name": "mAction", "offset": 0x5FA, "kind": "i16"}],
+    },
+}
+
+
+def _parse_itanium_param_segment(s: str) -> tuple[Optional[str], str]:
+    if not s:
+        return None, s
+    c = s[0]
+    if c == "P":
+        s = s[1:]
+        while s and s[0] in "rV":
+            s = s[1:]
+        m = re.match(r"^(\d+)(.+)", s)
+        if not m:
+            return None, ""
+        n = int(m.group(1))
+        return m.group(2)[:n], m.group(2)[n:]
+    if c in "iuxcsbv":
+        return None, s[1:]
+    m = re.match(r"^(\d+)(.+)", s)
+    if m:
+        n = int(m.group(1))
+        return None, m.group(2)[n:]
+    return None, s[1:]
+
+
+def _itanium_param_ptr_views(mangled: str) -> List[str]:
+    s = (mangled or "").lstrip("_")
+    if not s.startswith("Z"):
+        return []
+    s = s[1:]
+    if s and s[0] in "LGK":
+        s = s[1:]
+    m = re.match(r"^(\d+)(.+)", s)
+    if not m:
+        return []
+    n = int(m.group(1))
+    s = m.group(2)[n:]
+    views: List[str] = []
+    while s:
+        view, s = _parse_itanium_param_segment(s)
+        if view:
+            views.append(view)
+    return views
+
+
+def _fix_arg_views_from_mangled(record: dict) -> None:
+    ptr_views = _itanium_param_ptr_views(record.get("mangled") or "")
+    if not ptr_views:
+        return
+    pi = 0
+    for arg in record.get("args") or []:
+        if arg.get("kind") != "ptr":
+            continue
+        view = (arg.get("view") or "").strip()
+        if pi < len(ptr_views) and (not view or view in _BAD_PTR_VIEWS):
+            arg["view"] = ptr_views[pi]
+        pi += 1
+
+
+def _apply_legacy_struct_patches(structs: List[dict]) -> None:
+    by_name = {s["name"]: s for s in structs}
+    for name, patch in _LEGACY_STRUCT_PATCHES.items():
+        existing = by_name.get(name)
+        if existing is None:
+            structs.append({
+                "name": name,
+                "size": patch["size"],
+                "fields": list(patch["fields"]),
+            })
+            continue
+        have = {f.get("name") for f in existing.get("fields") or []}
+        for field in patch["fields"]:
+            if field["name"] not in have:
+                existing.setdefault("fields", []).append(dict(field))
+        if (existing.get("size") or 0) < patch["size"]:
+            existing["size"] = patch["size"]
+
+
 def _is_excluded(flat: str, extra_prefixes: tuple) -> bool:
     return any(p in flat for p in _BUILTIN_EXCLUSIONS + extra_prefixes)
     
@@ -84,6 +182,8 @@ def merge(
     _apply_flat_names(functions, global_dm_cache, exclude_prefixes)
 
     structs   = sorted(ast.get("structs",   []), key=lambda s: s["name"])
+    _apply_legacy_struct_patches(structs)
+    structs.sort(key=lambda s: s["name"])
     enums     = sorted(ast.get("enums",     []), key=lambda e: e["name"])
     typedefs  = sorted(ast.get("typedefs",  []), key=lambda t: t["alias"])
     functions.sort(key=lambda f: (f.get("flat", ""), f["mangled"]))
@@ -198,7 +298,7 @@ def _merge_functions(
 
     mangled_rva_lookup: Dict[int, str] = {}
     for k, v in rva_map.items():
-        if v is not None and re.match(r'^(_Z|\?|@)', k):
+        if v is not None and _is_mangled(k):
             if v not in mangled_rva_lookup:
                 mangled_rva_lookup[v] = k
 
@@ -219,6 +319,8 @@ def _merge_functions(
 
     for fn in ast_fns:
         if _is_generated_artifact(fn):
+            continue
+        if _is_cold_block(fn.get("mangled", "")):
             continue
         mangled    = fn.get("mangled", "")
         rva_int    = None
@@ -268,7 +370,7 @@ def _merge_functions(
         record["rva"] = _rva_hex(rva_int) if rva_int is not None else None
 
         if used_key:
-            if re.match(r'^(_Z|\?|@)', used_key):
+            if _is_mangled(used_key):
                 record["mangled"] = used_key
             elif rva_int is not None:
                 if rva_int in mangled_rva_lookup:
@@ -277,6 +379,7 @@ def _merge_functions(
         if isinstance(record.get("loc"), str):
             record["loc"] = record["loc"].replace("\\", "/")
 
+        _fix_arg_views_from_mangled(record)
         out.append(record)
 
         if used_key:
@@ -295,16 +398,25 @@ def _merge_functions(
                 continue
             chosen: Optional[str] = None
             for k in keys:
+                if _is_cold_block(k):
+                    continue
                 if '::' in k and not k.endswith('::'):
                     chosen = k
                     break
             if not chosen:
                 for k in keys:
+                    if _is_cold_block(k):
+                        continue
                     if '_c' in k or '::' in k:
                         chosen = k
                         break
             if not chosen:
-                chosen = keys[0]
+                for k in keys:
+                    if not _is_cold_block(k):
+                        chosen = k
+                        break
+            if not chosen:
+                continue
             out.append(_opaque_stub(chosen, rva_int))
     except Exception:
         pass

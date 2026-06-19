@@ -119,4 +119,34 @@ class DwarfBackend(DebugInfoBackend):
                 result[decl_name] = pc
 
         proc.wait()
+        if not result:
+            result = _extract_rvas_nm(binary_path)
         return result
+
+
+def _extract_rvas_nm(binary_path: str) -> Dict[str, int]:
+    try:
+        proc = subprocess.run(
+            ["nm", binary_path],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except Exception:
+        return {}
+    result: Dict[str, int] = {}
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        addr, kind, name = parts[0], parts[1], parts[2]
+        if kind not in {"T", "t", "D", "d"}:
+            continue
+        try:
+            rva = int(addr, 16)
+        except ValueError:
+            continue
+        if name not in result:
+            result[name] = rva
+    return result
