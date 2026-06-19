@@ -123,3 +123,56 @@ def test_binary_path_passed_to_dwarfdump():
 
     call_args = mock_run.call_args[0][0]
     assert call_args[-1] == "/specific/path/libfoo.so"
+
+
+_STRUCT_FIXTURE = """\
+0x0000000b: DW_TAG_compile_unit
+              DW_AT_producer    ("clang")
+
+0x00000030:   DW_TAG_class_type
+                DW_AT_name        ("Puppy")
+                DW_AT_byte_size   (0x20)
+
+0x00000040:     DW_TAG_member
+                  DW_AT_name      ("mAction")
+                  DW_AT_type      (0x000000000001658c "s16")
+                  DW_AT_data_member_location    (0x0e)
+
+0x00000050:     DW_TAG_member
+                  DW_AT_name      ("mParam1")
+                  DW_AT_type      (0x00000000000000c8 "u8")
+                  DW_AT_data_member_location    (0x05)
+
+0x00000060:     DW_TAG_member
+                  DW_AT_name      ("mParam2")
+                  DW_AT_type      (0x00000000000000c8 "u8")
+                  DW_AT_data_member_location    (0x06)
+"""
+
+
+def test_parse_struct_layouts_from_dwarf():
+    from extractor.binary.dwarf import _parse_dwarf_types_stream
+
+    layouts = _parse_dwarf_types_stream(_STRUCT_FIXTURE.splitlines())
+    assert "Puppy" in layouts
+    puppy = layouts["Puppy"]
+    assert puppy["size"] == 0x20
+    assert puppy["fields"]["mAction"]["offset"] == 0x0e
+    assert puppy["fields"]["mAction"]["kind"] == "i16"
+    assert puppy["fields"]["mParam1"]["offset"] == 0x05
+    assert puppy["fields"]["mParam2"]["offset"] == 0x06
+
+
+def test_extract_struct_layouts_uses_dwarfdump():
+    from extractor.binary.dwarf import DwarfBackend
+
+    mock_proc = MagicMock()
+    mock_proc.stdout = iter(_STRUCT_FIXTURE.splitlines())
+    mock_proc.wait.return_value = 0
+
+    with patch("extractor.binary.dwarf.subprocess.Popen", return_value=mock_proc):
+        layouts = DwarfBackend().extract_struct_layouts("/fake/binary")
+
+    assert layouts["Puppy"]["fields"]["mAction"]["offset"] == 0x0e
+    mock_proc.wait.assert_called_once()
+    mock_proc.wait.assert_called_once()
