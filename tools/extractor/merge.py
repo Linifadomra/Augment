@@ -55,18 +55,6 @@ def _is_mangled(name: str) -> bool:
 
 _BAD_PTR_VIEWS = frozenset({"int", "i32", "u32", "void"})
 
-# Legacy actor classes libclang often sees as int* in Execute hooks.
-_LEGACY_STRUCT_PATCHES = {
-    "do_class": {
-        "size": 0xC84,
-        "fields": [{"name": "mAction", "offset": 0x5F2, "kind": "i16"}],
-    },
-    "ni_class": {
-        "size": 0xB0C,
-        "fields": [{"name": "mAction", "offset": 0x5FA, "kind": "i16"}],
-    },
-}
-
 
 def _parse_itanium_param_segment(s: str) -> tuple[Optional[str], str]:
     if not s:
@@ -124,25 +112,6 @@ def _fix_arg_views_from_mangled(record: dict) -> None:
         pi += 1
 
 
-def _apply_legacy_struct_patches(structs: List[dict]) -> None:
-    by_name = {s["name"]: s for s in structs}
-    for name, patch in _LEGACY_STRUCT_PATCHES.items():
-        existing = by_name.get(name)
-        if existing is None:
-            structs.append({
-                "name": name,
-                "size": patch["size"],
-                "fields": list(patch["fields"]),
-            })
-            continue
-        have = {f.get("name") for f in existing.get("fields") or []}
-        for field in patch["fields"]:
-            if field["name"] not in have:
-                existing.setdefault("fields", []).append(dict(field))
-        if (existing.get("size") or 0) < patch["size"]:
-            existing["size"] = patch["size"]
-
-
 def _is_excluded(flat: str, extra_prefixes: tuple) -> bool:
     return any(p in flat for p in _BUILTIN_EXCLUSIONS + extra_prefixes)
     
@@ -182,8 +151,6 @@ def merge(
     _apply_flat_names(functions, global_dm_cache, exclude_prefixes)
 
     structs   = sorted(ast.get("structs",   []), key=lambda s: s["name"])
-    _apply_legacy_struct_patches(structs)
-    structs.sort(key=lambda s: s["name"])
     enums     = sorted(ast.get("enums",     []), key=lambda e: e["name"])
     typedefs  = sorted(ast.get("typedefs",  []), key=lambda t: t["alias"])
     functions.sort(key=lambda f: (f.get("flat", ""), f["mangled"]))
