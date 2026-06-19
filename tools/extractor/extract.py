@@ -254,13 +254,83 @@ def _apply_struct_layouts(structs: List[dict], layouts: Dict[str, dict]) -> int:
         for f in s.get("fields") or []:
             off = f.get("offset")
             if off is None or off < 0:
-                new_off = lfields.get(f.get("name"))
+                entry = lfields.get(f.get("name"))
+                new_off = _layout_field_offset(entry)
                 if new_off is not None:
                     f["offset"] = new_off
                     filled += 1
+                kind = _layout_field_kind(entry)
+                if kind and (not f.get("kind") or f.get("kind") == "ptr"):
+                    f["kind"] = kind
         if (s.get("size") or 0) <= 1 and lay.get("size"):
             s["size"] = lay["size"]
     return filled
+
+
+def _layout_field_offset(entry) -> Optional[int]:
+    if isinstance(entry, int):
+        return entry if entry >= 0 else None
+    if isinstance(entry, dict):
+        off = entry.get("offset")
+        if isinstance(off, int) and off >= 0:
+            return off
+    return None
+
+
+def _layout_field_kind(entry, default: str = "i32") -> str:
+    if isinstance(entry, dict):
+        kind = entry.get("kind")
+        if isinstance(kind, str) and kind:
+            return kind
+    return default
+
+
+def _collect_struct_views(manifest: Dict) -> set[str]:
+    views: set[str] = set()
+    for fn in manifest.get("functions", []):
+        self_view = (fn.get("self_view") or "").strip()
+        if self_view:
+            views.add(self_view)
+        for arg in fn.get("args") or []:
+            view = (arg.get("view") or "").strip()
+            if view:
+                views.add(view)
+    return views
+
+
+def _inject_missing_structs(structs: List[dict], layouts: Dict[str, dict], views: set[str]) -> int:
+    existing = {s.get("name") for s in structs}
+    added = 0
+    for name in sorted(views):
+        if not name or name in existing:
+            continue
+        lay = layouts.get(name)
+        if not lay:
+            continue
+        fields_out = []
+        for fname, entry in (lay.get("fields") or {}).items():
+            off = _layout_field_offset(entry)
+            if off is None:
+                continue
+            kind = _layout_field_kind(entry)
+            view = entry.get("view", "") if isinstance(entry, dict) else ""
+            field = {
+                "name": fname,
+                "offset": off,
+                "kind": kind,
+                "len": entry.get("len", -1) if isinstance(entry, dict) else -1,
+                "view": view if isinstance(view, str) else "",
+            }
+            fields_out.append(field)
+        if not fields_out:
+            continue
+        structs.append({
+            "name": name,
+            "size": lay.get("size") or 0,
+            "fields": fields_out,
+        })
+        added += 1
+    return added
 
 
 # Phase 2: binary backend + merge + pack
@@ -304,7 +374,16 @@ def phase2(
     struct_layouts = backend.extract_struct_layouts(binary_path)
     if struct_layouts:
         filled = _apply_struct_layouts(manifest["structs"], struct_layouts)
-        log.info("filled %d unresolved struct field offsets from binary layout", filled)
+        added = _inject_missing_structs(
+            manifest["structs"],
+            struct_layouts,
+            _collect_struct_views(manifest),
+        )
+        log.info(
+            "struct layouts: filled %d field offsets, injected %d missing struct(s)",
+            filled,
+            added,
+        )
 
     from extractor.output.pack import pack
     out = Path(output_path)
