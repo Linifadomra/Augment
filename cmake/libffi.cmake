@@ -20,8 +20,25 @@ if(NOT TARGET ffi)
 
         else()
 
-            find_path(FFI_INCLUDE_DIR NAMES ffi.h PATH_SUFFIXES ffi)
-            find_library(FFI_LIBRARY NAMES ffi libffi)
+            find_path(FFI_INCLUDE_DIR NAMES ffi.h PATH_SUFFIXES ffi
+                HINTS
+                    /opt/homebrew/opt/libffi/include
+                    /usr/local/opt/libffi/include
+                NO_CMAKE_FIND_ROOT_PATH)
+            find_library(FFI_LIBRARY NAMES ffi libffi
+                HINTS
+                    /opt/homebrew/opt/libffi/lib
+                    /usr/local/opt/libffi/lib
+                NO_CMAKE_FIND_ROOT_PATH)
+
+            foreach(_pfx /opt/homebrew/opt/libffi /usr/local/opt/libffi)
+                if(NOT FFI_INCLUDE_DIR AND EXISTS "${_pfx}/include/ffi.h")
+                    set(FFI_INCLUDE_DIR "${_pfx}/include")
+                endif()
+                if(NOT FFI_LIBRARY AND EXISTS "${_pfx}/lib/libffi.dylib")
+                    set(FFI_LIBRARY "${_pfx}/lib/libffi.dylib")
+                endif()
+            endforeach()
 
             if(NOT FFI_INCLUDE_DIR OR NOT FFI_LIBRARY)
                 message(FATAL_ERROR
