@@ -290,6 +290,32 @@ def _type_kind(clang_type: _cx.Type) -> dict:
 def _struct_key(cursor: _cx.Cursor) -> str:
     return cursor.type.spelling or cursor.spelling
 
+def _collect_struct_fields(cursor: _cx.Cursor, derived_type, fields: list,
+                           seen_names: set, seen_bases: set) -> None:
+    bases = []
+    for child in cursor.get_children():
+        if child.kind == _cx.CursorKind.FIELD_DECL:
+            nm = child.spelling
+            if not nm or nm in seen_names:
+                continue
+            seen_names.add(nm)
+            off = derived_type.get_offset(nm)
+            if off is None or off < 0:
+                off = child.get_field_offsetof()
+            f = {"name": nm, "offset": off // 8}
+            f.update(_type_kind(child.type))
+            fields.append(f)
+        elif child.kind == _cx.CursorKind.CXX_BASE_SPECIFIER:
+            bd = child.type.get_canonical().get_declaration()
+            if bd is not None and bd.is_definition():
+                bk = bd.type.spelling or bd.spelling
+                if bk and bk not in seen_bases:
+                    seen_bases.add(bk)
+                    bases.append(bd)
+    for bd in bases:
+        _collect_struct_fields(bd, derived_type, fields, seen_names, seen_bases)
+
+
 def _visit_struct(cursor: _cx.Cursor, out: list, seen: set) -> None:
     if _is_system_cursor(cursor):
         return
@@ -304,12 +330,7 @@ def _visit_struct(cursor: _cx.Cursor, out: list, seen: set) -> None:
     seen.add(key)
 
     fields = []
-    for child in cursor.get_children():
-        if child.kind == _cx.CursorKind.FIELD_DECL:
-            schema = _type_kind(child.type)
-            f = {"name": child.spelling, "offset": child.get_field_offsetof() // 8}
-            f.update(schema)
-            fields.append(f)
+    _collect_struct_fields(cursor, cursor.type, fields, set(), set())
 
     size = cursor.type.get_size()
     out.append({
