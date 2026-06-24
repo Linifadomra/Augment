@@ -70,13 +70,25 @@ jobs:
       # -------------------------
       - name: Configure CMake (Windows)
         if: runner.os == 'Windows'
-        run: >
-          cmake -B build
-          -G "Visual Studio 17 2022"
-          -A x64
-          -DAUGMENT_TESTS=ON
-          -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-          -DVCPKG_TARGET_TRIPLET=x64-windows
+        shell: pwsh
+        run: |
+          $cmakeArgs = @(
+            "-B", "build",
+            "-A", "x64",
+            "-DAUGMENT_TESTS=ON",
+            "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+            "-DVCPKG_TARGET_TRIPLET=x64-windows"
+          )
+          $configured = $false
+          foreach ($gen in @("Visual Studio 18 2026", "Visual Studio 17 2022")) {
+            if (Test-Path build) { Remove-Item -Recurse -Force build }
+            cmake @cmakeArgs -G $gen
+            if ($LASTEXITCODE -eq 0) {
+              $configured = $true
+              break
+            }
+          }
+          if (-not $configured) { exit 1 }
 
       # -------------------------
       # Configure (Linux/macOS)
