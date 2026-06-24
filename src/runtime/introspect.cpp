@@ -96,18 +96,6 @@ extern "C" AUGMENT_API const char* augment_fn_loc(const char* flat, int i) {
     return filtered_func_at(augment::manifest::global_reader(), flat, i, &f) ? f.loc : "";
 }
 
-extern "C" AUGMENT_API const char* augment_resolve_at(const char* flat, const char* file_substr) {
-    auto& r = augment::manifest::global_reader();
-    int n = (int)r.func_count(flat);
-    for (int i = 0; i < n; ++i) {
-        augment::manifest::FuncView f{};
-        r.func_at(flat, (uint32_t)i, &f);
-        if (is_cold_block(f.mangled)) continue;
-        if (std::strstr(f.loc, file_substr)) return f.mangled;
-    }
-    return nullptr;
-}
-
 extern "C" AUGMENT_API const char* augment_resolve_sig(const char* flat, const char* sig) {
     auto& r = augment::manifest::global_reader();
     int n = (int)r.func_count(flat);

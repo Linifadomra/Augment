@@ -129,7 +129,6 @@ AUGMENT_API int augment_manifest_load(const char* path);
 AUGMENT_API int augment_fn_count(const char* flat);
 AUGMENT_API const char* augment_fn_mangled(const char* flat, int i);
 AUGMENT_API const char* augment_fn_loc(const char* flat, int i);
-AUGMENT_API const char* augment_resolve_at(const char* flat, const char* file_substr);
 AUGMENT_API const char* augment_resolve_sig(const char* flat, const char* sig);
 
 AUGMENT_API int augment_fn_params(const char* mangled, const AugmentArg** out);

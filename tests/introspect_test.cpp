@@ -11,8 +11,6 @@ int main() {
     assert(std::strcmp(augment_fn_mangled("daCow_c_Execute", 0), "_ZN7daCow_c7ExecuteEv") == 0);
 
     assert(augment_fn_count("init") == 2);
-    assert(augment_resolve_at("init", "b.cpp") != nullptr);
-    assert(std::strcmp(augment_resolve_at("init", "b.cpp"), "_ZL4initi") == 0);
     assert(std::strcmp(augment_resolve_sig("init", "i32"), "_ZL4initi") == 0);
     assert(std::strcmp(augment_resolve_sig("init", ""), "_ZL4initv") == 0);
 
