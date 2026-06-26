@@ -26,6 +26,7 @@ target_link_libraries(platform_selftest PRIVATE augment)
 target_include_directories(platform_selftest PRIVATE 
 ${CMAKE_CURRENT_SOURCE_DIR}/../src
 ${CMAKE_CURRENT_SOURCE_DIR}/../include
+${CMAKE_BINARY_DIR}/augment_generated
 )
 add_test(NAME platform COMMAND platform_selftest)
 

@@ -95,6 +95,13 @@ function(augment_codegen_target)
         "--include-root" "${ACG_INCLUDE_ROOT}"
     )
 
+    include("${CMAKE_CURRENT_LIST_DIR}/AugmentExclusions.cmake" OPTIONAL)
+
+    if(COMMAND augment_get_exclusion_flags)
+        augment_get_exclusion_flags(_excl_flags)
+        list(APPEND _walker_cmd ${_excl_flags})
+    endif()
+
     if(ACG_SYMBOL_PREFIX)
         list(APPEND _walker_cmd "--symbol-prefix" "${ACG_SYMBOL_PREFIX}")
     endif()
@@ -160,6 +167,12 @@ function(augment_codegen_target)
         AUGMENT_GENERATED_DIR       "${ACG_OUTPUT_DIR}"
         AUGMENT_MANIFEST_JSON       "${_out_manifest}"
     )
+
+    if(COMMAND augment_generate_exclusions)
+        augment_generate_exclusions(
+            TARGET ${ACG_TARGET}
+        )
+    endif()
 
     message(STATUS
         "[Augment] Codegen registered for target '${ACG_TARGET}'\n"

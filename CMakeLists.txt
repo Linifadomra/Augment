@@ -78,7 +78,8 @@ else()
     target_compile_definitions(augment PUBLIC AUGMENT_FFI=0)
 endif()
 
-# == Codegen Helper Function ==
+# == Codegen Helper Functions ==
+include(cmake/AugmentExclusions.cmake)
 include(cmake/AugmentCodegen.cmake)
 include(cmake/AugmentManifest.cmake)
 

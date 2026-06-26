@@ -90,6 +90,25 @@ Augment/
 ├── tools/              ← Python libclang walker hooked into cmake
 └── CMakeLists.txt      ← configuration + installation script
 ```
+
+## Exclusions
+
+Exclusions are first-class citizens in Augment. Due to the nature of arbitrary symbol hooking and resolution, different vulnerabilities that would otherwise be implausible may surface. Therefore, exclusions are central and simple. Just add to your CMake:
+
+```cmake
+# Matches by prefix against the qualified symbol name
+set(AUGMENT_PREFIX_EXCLUSIONS
+    "Foo"
+)
+
+# Matches by substring against the qualified symbol name
+set(AUGMENT_SUBSTRING_EXCLUSIONS
+    "Bar"
+)
+```
+
+Exclusions are applied at every layer: symbols are filtered during the AST walk, stripped from the manifest, and blocked at runtime resolution. Built-in exclusions covering the C++ runtime, allocators, thread primitives, and Augment's own internals are always active regardless of what you specify here.
+
 ## Usage
 
 A full usage example including Luau scripting support, the Petrichor.Mod lifecycle, and the foreign language consumer path can be found in [Petrichor](https://github.com/Linifadomra/Petrichor), our game-agnostic C++ modloader library built on Augment.

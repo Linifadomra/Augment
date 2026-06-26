@@ -11,7 +11,7 @@ namespace augment::plat {
     void* sym_resolve(const char* symbol);
 }
 
-extern "C" AUGMENT_NOINLINE int augment_selftest_target(int x) {
+extern "C" AUGMENT_NOINLINE int aug_selftest_target(int x) {
     volatile int a = x;
     a += 7;
     a *= 3;
@@ -21,7 +21,7 @@ extern "C" AUGMENT_NOINLINE int augment_selftest_target(int x) {
 
 static int (*augment_selftest_orig)(int) = nullptr;
 
-extern "C" int augment_selftest_replacement(int x) {
+extern "C" int aug_selftest_replacement(int x) {
     return augment_selftest_orig(x) + 1000;
 }
 
@@ -66,8 +66,8 @@ void* follow_thunk(void* address) {
 
 int main() {
     int fails = 0;
-    void* target = follow_thunk((void*)&augment_selftest_target);
-    void* resolved = augment::plat::sym_resolve("augment_selftest_target");
+    void* target = follow_thunk((void*)&aug_selftest_target);
+    void* resolved = augment::plat::sym_resolve("aug_selftest_target");
     if (resolved == target) {
         std::printf("ok   sym_resolve -> %p\n", resolved);
     } else {
@@ -76,16 +76,16 @@ int main() {
         ++fails;
     }
 
-    int before = augment_selftest_target(5);
+    int before = aug_selftest_target(5);
     if (!augment::plat::hook_install(target,
-                                     reinterpret_cast<void*>(&augment_selftest_replacement),
+                                     reinterpret_cast<void*>(&aug_selftest_replacement),
                                      reinterpret_cast<void**>(&augment_selftest_orig))) {
         std::printf("FAIL hook_install\n");
         return 1;
     }
-    int hooked   = augment_selftest_target(5);
+    int hooked   = aug_selftest_target(5);
     augment::plat::hook_remove(target);
-    int restored = augment_selftest_target(5);
+    int restored = aug_selftest_target(5);
 
     if (hooked == before + 1000 && restored == before) {
         std::printf("ok   hook before=%d hooked=%d restored=%d\n", before, hooked, restored);

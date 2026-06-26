@@ -40,6 +40,24 @@ BUILTIN_FOLDER_EXCLUSIONS = {
 }
 _EXTRA_FOLDER_EXCLUSIONS: set[str] = set()
 
+_EXCLUDE_PREFIXES: tuple[str, ...] = ()
+_EXCLUDE_SUBSTRS:  tuple[str, ...] = ()
+
+
+def set_exclusions(prefixes: Iterable[str], substrs: Iterable[str]) -> None:
+    global _EXCLUDE_PREFIXES, _EXCLUDE_SUBSTRS
+    _EXCLUDE_PREFIXES = tuple(prefixes)
+    _EXCLUDE_SUBSTRS  = tuple(substrs)
+
+
+def _is_symbol_excluded(cursor: _cx.Cursor) -> bool:
+    name = _flat(cursor.spelling, cursor.semantic_parent)
+    if any(name.startswith(p) for p in _EXCLUDE_PREFIXES):
+        return True
+    if any(s in name for s in _EXCLUDE_SUBSTRS):
+        return True
+    return False
+
 
 def add_folder_exclusions(paths: Iterable[str]) -> None:
     _EXTRA_FOLDER_EXCLUSIONS.update(paths)
@@ -99,7 +117,9 @@ def walk(
     source_path: str,
     flags: List[str],
     index: Optional[Any] = None,
-    pch_path: str | None = None
+    pch_path: str | None = None,
+    exclude_prefixes: Iterable[str] = (),
+    exclude_substrs:  Iterable[str] = (),
 ) -> Dict[str, List[dict]]:
     """
     Parse *source_path* with the given compiler *flags* and return::
@@ -114,6 +134,8 @@ def walk(
     *index* is an optional ``clang.cindex.Index``. Pass one in when
     walking many files so the global index is reused.
     """
+    set_exclusions(exclude_prefixes, exclude_substrs)
+
     import os
 
     if not os.path.exists(source_path) or os.path.getsize(source_path) == 0:
@@ -342,6 +364,8 @@ def _visit_struct(cursor: _cx.Cursor, out: list, seen: set) -> None:
 
 def _visit_function(cursor: _cx.Cursor, out: list, seen: set) -> None:
     if _is_system_cursor(cursor):
+        return
+    if _is_symbol_excluded(cursor):
         return
     mangled = cursor.mangled_name
     if not mangled or mangled in seen:
