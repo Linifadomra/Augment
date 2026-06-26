@@ -77,8 +77,8 @@ namespace augment {{
 // A symbol whose demangled name *contains* any of these strings is blocked.
 {substring_block}
 // == Runtime check ==
-/// Returns true when the symbol identified by `demangled_name` must not be
-/// hooked.  Call this before installing any trampoline.
+/// Returns true when the symbol identified by `demangled_name` must not be resolved.
+/// See `platform/sym_resolve.cpp`
 [[nodiscard]]
 inline bool augment_should_exclude(const char* demangled_name) noexcept {{
     if (!demangled_name) return true;
