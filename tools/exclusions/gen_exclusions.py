@@ -115,7 +115,7 @@ def main() -> None:
     args = ap.parse_args()
 
     prefixes   = _read_lines(args.prefix_file)
-    substrings = _read_lines(args.substring_file)
+    substrings = _read_lines(args.substr_file)
     generate(prefixes, substrings, args.output)
 
 

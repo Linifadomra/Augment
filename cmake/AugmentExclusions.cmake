@@ -130,4 +130,9 @@ function(augment_generate_exclusions)
     set_target_properties(${AGE_TARGET} PROPERTIES
         AUGMENT_EXCLUSIONS_HEADER "${_out_header}"
     )
+
+    if(TARGET augment)
+        target_include_directories(augment PRIVATE "${_out_dir}")
+        add_dependencies(augment ${AGE_TARGET}_augment_exclusions)
+    endif()
 endfunction()
