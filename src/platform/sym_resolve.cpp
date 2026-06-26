@@ -16,6 +16,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include "augment_exclusions.hpp"
+
 #if defined(__APPLE__) || defined(__linux__)
 
 #include <cstdlib>
@@ -143,6 +145,12 @@ const image_syms& image() {
 void* sym_resolve(const char* symbol) {
     if (!symbol) return nullptr;
 
+    int   status   = 0;
+    char* dem      = abi::__cxa_demangle(symbol, nullptr, nullptr, &status);
+    bool  excluded = augment::augment_should_exclude(dem ? dem : symbol);
+    std::free(dem);
+    if (excluded) return nullptr;
+
     if (void* p = dlsym(RTLD_DEFAULT, symbol)) return p;
     if (symbol[0] != '_') {
         char scratch[512];
@@ -258,8 +266,16 @@ const image_syms& image() {
 } // namespace
 
 void* sym_resolve(const char* symbol) {
+    if (!symbol) return nullptr;
+
+    int   status   = 0;
+    char* dem      = abi::__cxa_demangle(symbol, nullptr, nullptr, &status);
+    bool  excluded = augment::augment_should_exclude(dem ? dem : symbol);
+    std::free(dem);
+    if (excluded) return nullptr;
+
     const image_syms& img = image();
-    if (!symbol || !img.ok) return nullptr;
+    if (!img.ok) return nullptr;
 
     for (size_t i = 0; i < img.count; ++i) {
         const Elf64_Sym& s = img.syms[i];
@@ -341,11 +357,13 @@ void* sym_resolve(const char* symbol) {
 
     char storage[sizeof(SYMBOL_INFO) + MAX_SYM_NAME];
     auto* info = reinterpret_cast<PSYMBOL_INFO>(storage);
-
     info->SizeOfStruct = sizeof(SYMBOL_INFO);
     info->MaxNameLen   = MAX_SYM_NAME;
 
     if (!SymFromName(img.process, symbol, info))
+        return nullptr;
+
+    if (augment::augment_should_exclude(info->Name))
         return nullptr;
 
     return reinterpret_cast<void*>(info->Address);

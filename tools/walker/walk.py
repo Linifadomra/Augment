@@ -141,39 +141,55 @@ def _qualified_name(cursor: clang.Cursor) -> str:
     return "::".join(parts)
 
 
-def _is_hookable(cursor: clang.Cursor, prefix_filter: Optional[str]) -> bool:
+def _is_hookable(
+    cursor: clang.Cursor,
+    prefix_filter: Optional[str],
+    exclude_prefixes: list[str],
+    exclude_substrs: list[str],
+) -> bool:
     """True for non-inline, non-template, non-deleted member/free functions."""
     if cursor.kind not in (clang.CursorKind.CXX_METHOD,
                            clang.CursorKind.FUNCTION_DECL):
         return False
-    # skip pure virtuals, deleted, defaulted
     if cursor.is_pure_virtual_method():
         return False
     if cursor.availability == clang.AvailabilityKind.NOT_AVAILABLE:
         return False
-    # skip declarations without a definition body (forward decls in headers
-    # without an inline body are fine, we want the declaration for ctx gen)
+
     qn = _qualified_name(cursor)
+
     if prefix_filter and not qn.startswith(prefix_filter):
         return False
-    # skip compiler-generated operators we can't meaningfully hook
+
+    for pat in exclude_prefixes:
+        if qn.startswith(pat):
+            return False
+    for pat in exclude_substrs:
+        if pat in qn:
+            return False
+
     boring = ("operator=", "operator==", "operator!=",
               "operator<", "operator>", "operator<<", "operator>>")
     if cursor.spelling in boring:
         return False
+
     return True
 
 
-def walk_tu(tu: clang.TranslationUnit, source_path: str,
-            prefix_filter: Optional[str]) -> list[Symbol]:
+def walk_tu(
+    tu: clang.TranslationUnit,
+    source_path: str,
+    prefix_filter: Optional[str],
+    exclude_prefixes: list[str],
+    exclude_substrs: list[str],
+) -> list[Symbol]:
     symbols: list[Symbol] = []
     seen: set[str] = set()
 
     def visit(cursor: clang.Cursor):
-        # Only descend into nodes from our file (avoid system headers)
         if cursor.location.file and cursor.location.file.name != source_path:
             return
-        if _is_hookable(cursor, prefix_filter):
+        if _is_hookable(cursor, prefix_filter, exclude_prefixes, exclude_substrs):
             qn = _qualified_name(cursor)
             if qn not in seen:
                 seen.add(qn)
@@ -429,6 +445,14 @@ def parse_args() -> argparse.Namespace:
                    help="Emit only symbols.json, skip hpp/cpp codegen")
     p.add_argument("--include-root", default=None,
                 help="Root directory to make include paths relative to")
+    p.add_argument("--exclude-prefix", action="append", default=[],
+                   metavar="PAT",
+                   help="Exclude symbols whose qualified name starts with PAT "
+                        "(repeatable, merged with built-in exclusions)")
+    p.add_argument("--exclude-substr", action="append", default=[],
+                   metavar="PAT",
+                   help="Exclude symbols whose qualified name contains PAT "
+                        "(repeatable, merged with built-in exclusions)")
     return p.parse_args()
 
 
@@ -463,7 +487,8 @@ def main():
             # non-fatal: partial AST is still useful
             errors += len(diag_errors)
 
-        syms = walk_tu(tu, header, args.symbol_prefix)
+        syms = walk_tu(tu, header, args.symbol_prefix,
+                       args.exclude_prefix, args.exclude_substr)
         print(f"  {header}: {len(syms)} symbol(s) found")
         all_symbols.extend(syms)
 

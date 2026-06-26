@@ -93,14 +93,18 @@ def _select_backend(binary_path: str, debug_format: str | None):
 _EMPTY: dict = {"structs": (), "functions": (), "enums": (), "typedefs": ()}
 
 
-def _walk_one(args: Tuple[str, List[str], str, Optional[str]]) -> dict:
-    source_file, flags, project_root, pch_path = args
+def _walk_one(args: Tuple[str, List[str], str, Optional[str],
+                          tuple[str, ...], tuple[str, ...]]) -> dict:
+    source_file, flags, project_root, pch_path, \
+        exclude_prefixes, exclude_substrs = args
 
     from extractor.ast_walk.walker import set_project_root, walk
     set_project_root(project_root)
 
     try:
-        result = walk(source_file, flags, pch_path=pch_path)
+        result = walk(source_file, flags, pch_path=pch_path,
+                      exclude_prefixes=exclude_prefixes,
+                      exclude_substrs=exclude_substrs)
         result["_errors"] = []
         return result
     except RuntimeError as exc:
@@ -118,6 +122,7 @@ def phase1(
     log_file: Optional[str] = None,
     verbose: bool = False,
     exclude_prefixes: tuple[str, ...] = (),
+    exclude_substrs: tuple[str, ...] = (),
     exclude_paths: tuple[str, ...] = (),
     pch_out: Optional[str] = None,
 ) -> Dict:
@@ -164,10 +169,11 @@ def phase1(
 
     workers = jobs or int(os.environ.get("AUGMENT_JOBS") or 0) or max(1, round(os.cpu_count() / 2))
     items = [
-        (src, flags, project_root, pch_path)
-        for src, flags in flag_map.items()
-        if not is_excluded(src, exclude_paths)
-    ]
+            (src, flags, project_root, pch_path,
+             exclude_prefixes, exclude_substrs)
+            for src, flags in flag_map.items()
+            if not is_excluded(src, exclude_paths)
+        ]
     total = len(items)
     chunksize = max(4, total // (workers * 8))
     skipped = 0
@@ -342,6 +348,7 @@ def phase2(
     log_file: Optional[str] = None,
     verbose: bool = False,
     exclude_prefixes: tuple[str, ...] = (),
+    exclude_substrs: tuple[str, ...] = (),
     exclude_paths: tuple[str, ...] = ()
 ) -> Dict:
     """
@@ -369,7 +376,8 @@ def phase2(
     log.info("got %d RVA entries", len(rva_map))
 
     from extractor.merge import merge
-    manifest = merge(ast, rva_map, exclude_prefixes=exclude_prefixes)
+    manifest = merge(ast, rva_map, exclude_prefixes=exclude_prefixes,
+                     exclude_substrs=exclude_substrs)
 
     struct_layouts = backend.extract_struct_layouts(binary_path)
     if struct_layouts:
@@ -413,6 +421,9 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--exclude-prefix", dest="exclude_prefixes",
                    action="append", default=[],
                    help="Exclude functions whose demangled name starts with this prefix (repeatable)") # noqa # fmt: skip
+    p.add_argument("--exclude-substr", dest="exclude_substrs",
+                   action="append", default=[],
+                   help="Exclude symbols whose demangled name contains this substring (repeatable)") # noqa # fmt: skip
     p.add_argument("--log-file", dest="log_file", default=None,
                    help="Write structured log output to this file")
     p.add_argument("--verbose", "-v", action="store_true", default=False,
@@ -475,6 +486,7 @@ def main(argv: list | None = None) -> None:
             log_file=args.log_file,
             verbose=args.verbose,
             exclude_prefixes=tuple(args.exclude_prefixes),
+            exclude_substrs=tuple(args.exclude_substrs),
             exclude_paths=tuple(args.exclude_paths),
             pch_out=args.pch_out,
         )
@@ -488,6 +500,7 @@ def main(argv: list | None = None) -> None:
             log_file=args.log_file,
             verbose=args.verbose,
             exclude_prefixes=tuple(args.exclude_prefixes),
+            exclude_substrs=tuple(args.exclude_substrs),
             exclude_paths=tuple(args.exclude_paths)
         )
 

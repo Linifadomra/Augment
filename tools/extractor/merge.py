@@ -6,37 +6,6 @@ import re
 _ANON_NS = re.compile(r'\(anonymous namespace\)::')
 _STRIP_ARGS = re.compile(r'(?<!operator)\(.*')
 _MSVC_CLEANUP = re.compile(r'\b(public:|private:|protected:|__cdecl|__stdcall|__thiscall|__vectorcall|__ptr64)\b')
-_BUILTIN_EXCLUSIONS = (
-    "struct (unnamed",
-    "class (unnamed",
-    "union (unnamed",
-    "(unnamed struct",
-    "(unnamed union",
-    "tinystl",
-    "zz::",                  # dobby
-    "AssemblerCodeBuilder",  # dobby
-    "ClearCache",            # dobby
-    "ClosureTrampoline",     # dobby
-    "CodeGenBase",           # dobby
-    "CodeMemBuffer",         # dobby
-    "true>>>",
-    "_Augment",              # augment
-    "augment",               # augment
-    "std::",                 # standard lib
-    "boost::",               # boost lib
-    "__gnu_cxx::",           # gnu specific
-    "$_",                    # compiler-generated
-    ">::",
-    "__cxxabiv",
-    "vtable for ",
-    "typeinfo for ",
-    "typeinfo name for ",
-    "construction vtable for ",
-    "VTT for ",
-    "non-virtual thunk to ",
-    "virtual thunk to ",
-    "covariant return thunk to ",
-)
 
 
 def _is_generated_artifact(fn: dict) -> bool:
@@ -112,9 +81,13 @@ def _fix_arg_views_from_mangled(record: dict) -> None:
         pi += 1
 
 
-def _is_excluded(flat: str, extra_prefixes: tuple) -> bool:
-    return any(p in flat for p in _BUILTIN_EXCLUSIONS + extra_prefixes)
-    
+def _is_excluded(flat: str, exclude_prefixes: tuple, exclude_substrs: tuple) -> bool:
+    if any(flat.startswith(p) for p in exclude_prefixes):
+        return True
+    if any(s in flat for s in exclude_substrs):
+        return True
+    return False
+
 
 def _clean_flat(demangled: str) -> str:
     s = _ANON_NS.sub('', demangled)
@@ -139,22 +112,24 @@ def merge(
     ast: Dict[str, List[dict]],
     rva_map: Dict[str, int],
     exclude_prefixes: tuple[str, ...] = (),
+    exclude_substrs: tuple[str, ...] = (),
 ) -> Dict[str, List[dict]]:
     rva_keys = list(rva_map.keys())
     ast_fns = ast.get("functions", [])
     ast_mangled = [fn.get("mangled", "") for fn in ast_fns if fn.get("mangled")]
-    
+
     all_mangled_strings = list(set(rva_keys + ast_mangled))
     global_dm_cache = _demangle_batch(all_mangled_strings)
 
-    functions = _merge_functions(ast_fns, rva_map, global_dm_cache, exclude_prefixes)
-    _apply_flat_names(functions, global_dm_cache, exclude_prefixes)
+    functions = _merge_functions(ast_fns, rva_map, global_dm_cache,
+                                 exclude_prefixes, exclude_substrs)
+    _apply_flat_names(functions, global_dm_cache, exclude_prefixes, exclude_substrs)
 
     structs   = sorted(ast.get("structs",   []), key=lambda s: s["name"])
     enums     = sorted(ast.get("enums",     []), key=lambda e: e["name"])
     typedefs  = sorted(ast.get("typedefs",  []), key=lambda t: t["alias"])
     functions.sort(key=lambda f: (f.get("flat", ""), f["mangled"]))
-    
+
     return {
         "version":   2,
         "functions": functions,
@@ -236,12 +211,13 @@ def _demangle_batch(mangled: List[str]) -> Dict[str, str]:
     return mapping
 
 
-def _apply_flat_names(functions: List[dict], dm_cache: Dict[str, str], exclude_prefixes: tuple) -> None:
+def _apply_flat_names(functions: List[dict], dm_cache: Dict[str, str],
+                      exclude_prefixes: tuple, exclude_substrs: tuple) -> None:
     to_remove = []
     for i, fn in enumerate(functions):
         dem = dm_cache.get(fn["mangled"], fn["mangled"].lstrip("_"))
         flat = _clean_flat(dem)
-        if _is_excluded(flat, exclude_prefixes):
+        if _is_excluded(flat, exclude_prefixes, exclude_substrs):
             to_remove.append(i)
         else:
             fn["flat"] = flat
@@ -258,6 +234,7 @@ def _merge_functions(
     rva_map: Dict[str, int],
     dm_cache: Dict[str, str],
     exclude_prefixes: tuple,
+    exclude_substrs: tuple,
 ) -> List[dict]:
     out: List[dict] = []
     consumed_rva_keys: set = set()

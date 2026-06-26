@@ -111,6 +111,13 @@ function(augment_manifest)
         ${_excl_args}
     )
 
+    include("${CMAKE_CURRENT_LIST_DIR}/AugmentExclusions.cmake" OPTIONAL)
+    if(COMMAND augment_get_exclusion_flags)
+        augment_get_exclusion_flags(_excl_flags)
+        list(APPEND _phase1_cmd ${_excl_flags})
+        list(APPEND _phase2_cmd ${_excl_flags})
+    endif()
+
     if(APPLE)
         set(_dbg "${_target_bin}.dSYM")
         add_custom_command(
@@ -156,5 +163,15 @@ function(augment_manifest)
     add_dependencies(gen_manifest_phase1 "${AM_TARGET}_augment_phase1")
     add_dependencies(gen_manifest_phase2 "${AM_TARGET}_augment_phase2")
     add_dependencies(gen_manifest "${AM_TARGET}_augment_phase1" "${AM_TARGET}_augment_phase2")
+
+    if(COMMAND augment_generate_exclusions)
+        get_target_property(_excl_dir ${AM_TARGET} AUGMENT_GENERATED_DIR)
+        if(NOT _excl_dir)
+            set(_excl_dir "${CMAKE_CURRENT_BINARY_DIR}/augment_generated")
+        endif()
+        augment_generate_exclusions(
+            TARGET ${AM_TARGET}
+        )
+    endif()
 
 endfunction()
