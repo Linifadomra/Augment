@@ -1,4 +1,4 @@
-<div align="center"> <img src="assets/Augment_purple_gradient.svg" alt="Logo" width="400"/> </div>
+<div align="center"> <img src="assets/svg/Augment_purple_gradient.svg" alt="Logo" width="400"/> </div>
 
 # Augment
 
