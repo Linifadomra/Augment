@@ -9,7 +9,7 @@ The core philosophy: hook in any function at runtime with before/after/replace s
 
 ## Dependencies
 
-- Dobby
+- Dobby (MacOS / Linux) OR MinHook (Windows)
 - LibClang
 - Python 3.8+
 
