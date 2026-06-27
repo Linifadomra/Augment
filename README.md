@@ -1,3 +1,5 @@
+<div align="center"> <img src="assets/Augment_purple_gradient.svg" alt="Logo" width="400"/> </div>
+
 # Augment
 
 Mixin-based patching framework written in C++ without sacrificing performance or stability. 
