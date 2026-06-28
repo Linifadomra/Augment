@@ -63,17 +63,21 @@ set(_AUGMENT_BUILTIN_SUBSTR_EXCLUSIONS
 # Merge built-ins with caller-supplied lists into the two canonical names.
 # These are set in PARENT_SCOPE by convention; modules that include this file
 # get them as normal variables.
-set(AUGMENT_PREFIX_EXCLUSIONS
-    ${_AUGMENT_BUILTIN_PREFIX_EXCLUSIONS}
-    ${AUGMENT_PREFIX_EXCLUSIONS}    # caller-supplied (may be empty)
-    CACHE STRING "Merged prefix exclusion list" FORCE
-)
-
 set(AUGMENT_SUBSTR_EXCLUSIONS
     ${_AUGMENT_BUILTIN_SUBSTR_EXCLUSIONS}
-    ${AUGMENT_SUBSTR_EXCLUSIONS}    # caller-supplied (may be empty)
-    CACHE STRING "Merged substring exclusion list" FORCE
+    ${AUGMENT_SUBSTR_EXCLUSIONS}
 )
+list(REMOVE_DUPLICATES AUGMENT_SUBSTR_EXCLUSIONS)
+set(AUGMENT_SUBSTR_EXCLUSIONS ${AUGMENT_SUBSTR_EXCLUSIONS}
+    CACHE STRING "Merged substring exclusion list" FORCE)
+
+set(AUGMENT_PREFIX_EXCLUSIONS
+    ${_AUGMENT_BUILTIN_PREFIX_EXCLUSIONS}
+    ${AUGMENT_PREFIX_EXCLUSIONS}
+)
+list(REMOVE_DUPLICATES AUGMENT_PREFIX_EXCLUSIONS)
+set(AUGMENT_PREFIX_EXCLUSIONS ${AUGMENT_PREFIX_EXCLUSIONS}
+    CACHE STRING "Merged prefix exclusion list" FORCE)
 
 function(augment_get_exclusion_flags out_var)
     set(_flags "")
