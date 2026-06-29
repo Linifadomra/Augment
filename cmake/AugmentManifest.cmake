@@ -4,8 +4,8 @@ if(NOT DEFINED AUGMENT_EXTRACT_SCRIPT)
 endif()
 
 function(augment_manifest)
-    cmake_parse_arguments(AM "SEPARATE_TARGET"
-        "TARGET;OUTPUT;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT;PCH_OUT"
+    cmake_parse_arguments(AM "SEPARATE_TARGET;REGENERATE_AST"
+        "TARGET;OUTPUT;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT;PCH_OUT;AST_MANIFEST_HINT_DIR"
         "EXCLUDE;EXCLUDE_PREFIX;EXCLUDE_PATH"
         ${ARGN})
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -50,17 +50,33 @@ function(augment_manifest)
         set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
         set(_fmt_arg "--debug-format" "pdb")
     else()
-        target_compile_options(${AM_TARGET} PRIVATE $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:-g>)
+        target_compile_options(${AM_TARGET} PRIVATE
+            $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:-g>
+        )
         set(_extract_src "${_target_bin}")
         set(_fmt_arg "--debug-format" "dwarf")
     endif()
 
     cmake_path(GET AUGMENT_EXTRACT_SCRIPT PARENT_PATH _extract_script_dir)
     cmake_path(GET _extract_script_dir PARENT_PATH _extract_tools_dir)
-    set(_py_env "${CMAKE_COMMAND}" -E env "PYTHONPATH=${_extract_tools_dir}")
-    set(_py_run "${_py_env}" "${Python3_EXECUTABLE}" -u "${AUGMENT_EXTRACT_SCRIPT}")
+    set(_py_env
+        "${CMAKE_COMMAND}"
+        -E
+        env
+        "PYTHONPATH=${_extract_tools_dir}")
+    set(_py_run
+        ${_py_env}
+        "${Python3_EXECUTABLE}"
+        -u
+        "${AUGMENT_EXTRACT_SCRIPT}")
 
-    set(_ast_manifest "${CMAKE_CURRENT_BINARY_DIR}/${AM_TARGET}_ast_manifest.json")
+    set(_ast_manifest
+        "${CMAKE_CURRENT_BINARY_DIR}/${AM_TARGET}_ast_manifest.json")
+
+    if(AM_AST_MANIFEST_HINT_DIR)
+        set(_committed_ast_manifest
+            "${AM_AST_MANIFEST_HINT_DIR}/${AM_TARGET}_ast_manifest.json")
+    endif()
 
     if(AM_PCH_OUT)
         set(_pch_out "${AM_PCH_OUT}")
@@ -69,14 +85,16 @@ function(augment_manifest)
     endif()
 
     set(_phase1_cmd
-        ${CMAKE_COMMAND} -E env
-            "AUGMENT_JOBS=$ENV{AUGMENT_JOBS}"
+        ${CMAKE_COMMAND}
+        -E
+        env
+        "AUGMENT_JOBS=$ENV{AUGMENT_JOBS}"
         ${_py_run}
         phase1
-        "--compile-commands"  "${AM_COMPILE_COMMANDS}"
-        "--project-root"      "${AM_PROJECT_ROOT}"
-        "--ast-out"           "${_ast_manifest}"
-        "--pch"               "${_pch_out}"
+        "--compile-commands" "${AM_COMPILE_COMMANDS}"
+        "--project-root" "${AM_PROJECT_ROOT}"
+        "--ast-out" "${_ast_manifest}"
+        "--pch" "${_pch_out}"
     )
 
     if(AM_EXCLUDE_PATH)
@@ -85,28 +103,59 @@ function(augment_manifest)
         endforeach()
     endif()
 
-    add_custom_command(
-        OUTPUT  "${_ast_manifest}"
-        COMMAND ${_phase1_cmd}
-        DEPENDS "${AM_COMPILE_COMMANDS}"
-        COMMENT "augment: phase1 AST walk + registry codegen for ${AM_TARGET}"
-        USES_TERMINAL
-        VERBATIM
-    )
+    if(AM_AST_MANIFEST_HINT_DIR
+       AND EXISTS "${_committed_ast_manifest}"
+       AND NOT AM_REGENERATE_AST)
+        add_custom_command(
+            OUTPUT "${_ast_manifest}"
+            COMMAND ${CMAKE_COMMAND}
+                -E
+                copy
+                "${_committed_ast_manifest}"
+                "${_ast_manifest}"
+            COMMENT "augment: using committed AST manifest"
+            VERBATIM
+        )
+    else()
+        add_custom_command(
+            OUTPUT "${_ast_manifest}"
+            COMMAND ${_phase1_cmd}
+            DEPENDS "${AM_COMPILE_COMMANDS}"
+            COMMENT "augment: phase1 AST walk + registry codegen for ${AM_TARGET}"
+            USES_TERMINAL
+            VERBATIM
+        )
+    endif()
+
+    if(AM_AST_MANIFEST_HINT_DIR)
+        add_custom_target("${AM_TARGET}_regenerate_ast"
+            COMMAND ${_phase1_cmd}
+            COMMAND ${CMAKE_COMMAND}
+                -E
+                copy
+                "${_ast_manifest}"
+                "${_committed_ast_manifest}"
+            COMMENT "augment: regenerate committed AST manifest"
+            USES_TERMINAL
+            VERBATIM
+        )
+    endif()
 
     add_custom_target("${AM_TARGET}_augment_phase1"
         DEPENDS "${_ast_manifest}"
     )
 
-    cmake_path(REPLACE_EXTENSION AM_OUTPUT LAST_ONLY ".json" OUTPUT_VARIABLE _json_out)
+    cmake_path(REPLACE_EXTENSION AM_OUTPUT LAST_ONLY ".json"
+        OUTPUT_VARIABLE _json_out)
+
     set(_agmf_out "${AM_OUTPUT}")
 
     set(_phase2_cmd
         ${_py_run}
         phase2
-        "--ast-manifest"  "${_ast_manifest}"
-        "--binary"        "${_extract_src}"
-        "--output"        "${AM_OUTPUT}"
+        "--ast-manifest" "${_ast_manifest}"
+        "--binary" "${_extract_src}"
+        "--output" "${AM_OUTPUT}"
         ${_fmt_arg}
         ${_excl_args}
     )
@@ -121,10 +170,10 @@ function(augment_manifest)
     if(APPLE)
         set(_dbg "${_target_bin}.dSYM")
         add_custom_command(
-            OUTPUT  "${_agmf_out}" "${_json_out}"
+            OUTPUT "${_agmf_out}" "${_json_out}"
             COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
             COMMAND ${_phase2_cmd} "--binary" "${_dbg}"
-            DEPENDS "${_target_bin}" 
+            DEPENDS "${_target_bin}"
             COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
             USES_TERMINAL
             VERBATIM
@@ -132,10 +181,11 @@ function(augment_manifest)
     else()
         set(_strip_cmd "")
         if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
-            set(_strip_cmd COMMAND "${CMAKE_OBJCOPY}" --strip-debug "${_target_bin}")
+            set(_strip_cmd
+                COMMAND "${CMAKE_OBJCOPY}" --strip-debug "${_target_bin}")
         endif()
         add_custom_command(
-            OUTPUT  "${_agmf_out}" "${_json_out}"
+            OUTPUT "${_agmf_out}" "${_json_out}"
             COMMAND ${_phase2_cmd}
             ${_strip_cmd}
             DEPENDS "${_target_bin}"
@@ -145,9 +195,7 @@ function(augment_manifest)
         )
     endif()
 
-    add_custom_target("${AM_TARGET}_augment_phase2"
-        DEPENDS "${_agmf_out}"
-    )
+    add_custom_target("${AM_TARGET}_augment_phase2" DEPENDS "${_agmf_out}")
     add_dependencies("${AM_TARGET}_augment_phase2" "${AM_TARGET}")
 
     if(AM_SEPARATE_TARGET)
@@ -160,18 +208,31 @@ function(augment_manifest)
         add_custom_target(gen_manifest ALL)
     endif()
 
-    add_dependencies(gen_manifest_phase1 "${AM_TARGET}_augment_phase1")
-    add_dependencies(gen_manifest_phase2 "${AM_TARGET}_augment_phase2")
-    add_dependencies(gen_manifest "${AM_TARGET}_augment_phase1" "${AM_TARGET}_augment_phase2")
+    add_dependencies(
+        gen_manifest_phase1
+        "${AM_TARGET}_augment_phase1")
+
+    add_dependencies(
+        gen_manifest_phase2
+        "${AM_TARGET}_augment_phase2")
+
+    add_dependencies(
+        gen_manifest
+        "${AM_TARGET}_augment_phase1"
+        "${AM_TARGET}_augment_phase2")
 
     if(COMMAND augment_generate_exclusions)
-        get_target_property(_excl_dir ${AM_TARGET} AUGMENT_GENERATED_DIR)
+
+        get_target_property(
+            _excl_dir
+            ${AM_TARGET}
+            AUGMENT_GENERATED_DIR)
+
         if(NOT _excl_dir)
             set(_excl_dir "${CMAKE_CURRENT_BINARY_DIR}/augment_generated")
         endif()
-        augment_generate_exclusions(
-            TARGET ${AM_TARGET}
-        )
+
+        augment_generate_exclusions(TARGET ${AM_TARGET})
     endif()
 
 endfunction()
