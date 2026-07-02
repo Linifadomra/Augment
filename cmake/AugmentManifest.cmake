@@ -1,11 +1,12 @@
 if(NOT DEFINED AUGMENT_EXTRACT_SCRIPT)
-    set(AUGMENT_EXTRACT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tools/extractor/extract.py"
+    set(AUGMENT_EXTRACT_SCRIPT
+        "${CMAKE_CURRENT_LIST_DIR}/../tools/extractor/extract.py"
         CACHE FILEPATH "Path to extract.py")
 endif()
 
 function(augment_manifest)
     cmake_parse_arguments(AM "SEPARATE_TARGET;REGENERATE_AST"
-        "TARGET;OUTPUT;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT;PCH_OUT;AST_MANIFEST_HINT_DIR"
+        "TARGET;OUTPUT;BINARY;BINARY_STAMP;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT;PCH_OUT;AST_MANIFEST_HINT_DIR"
         "EXCLUDE;EXCLUDE_PREFIX;EXCLUDE_PATH"
         ${ARGN})
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -41,20 +42,34 @@ function(augment_manifest)
         endforeach()
     endif()
 
-    set(_target_bin $<TARGET_FILE:${AM_TARGET}>)
+    if(AM_BINARY)
+        set(_target_bin "${AM_BINARY}")
+    else()
+        set(_target_bin $<TARGET_FILE:${AM_TARGET}>)
+    endif()
 
     if(WIN32 AND MSVC)
-        target_compile_options(${AM_TARGET} PRIVATE
-            $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:/Zi>
-        )
         set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
         set(_fmt_arg "--debug-format" "pdb")
     else()
-        target_compile_options(${AM_TARGET} PRIVATE
-            $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:-g>
-        )
         set(_extract_src "${_target_bin}")
         set(_fmt_arg "--debug-format" "dwarf")
+    endif()
+
+    if(TARGET ${AM_TARGET})
+        get_target_property(_target_imported ${AM_TARGET} IMPORTED)
+
+        if(NOT _target_imported)
+            if(WIN32 AND MSVC)
+                target_compile_options(${AM_TARGET} PRIVATE
+                    $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:/Zi>
+                )
+            else()
+                target_compile_options(${AM_TARGET} PRIVATE
+                    $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:-g>
+                )
+            endif()
+        endif()
     endif()
 
     cmake_path(GET AUGMENT_EXTRACT_SCRIPT PARENT_PATH _extract_script_dir)
@@ -167,13 +182,19 @@ function(augment_manifest)
         list(APPEND _phase2_cmd ${_excl_flags})
     endif()
 
+    if(AM_BINARY_STAMP)
+        set(_binary_dep "${AM_BINARY_STAMP}")
+    elseif(NOT AM_BINARY)
+        set(_binary_dep "${_target_bin}")
+    endif()
+
     if(APPLE)
         set(_dbg "${_target_bin}.dSYM")
         add_custom_command(
             OUTPUT "${_agmf_out}" "${_json_out}"
             COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
             COMMAND ${_phase2_cmd} "--binary" "${_dbg}"
-            DEPENDS "${_target_bin}"
+            DEPENDS "${_binary_dep}"
             COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
             USES_TERMINAL
             VERBATIM
@@ -188,7 +209,7 @@ function(augment_manifest)
             OUTPUT "${_agmf_out}" "${_json_out}"
             COMMAND ${_phase2_cmd}
             ${_strip_cmd}
-            DEPENDS "${_target_bin}"
+            DEPENDS "${_binary_dep}"
             COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
             USES_TERMINAL
             VERBATIM

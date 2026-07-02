@@ -99,7 +99,7 @@ function(augment_generate_exclusions)
         message(FATAL_ERROR "[augment_generate_exclusions] TARGET is required")
     endif()
 
-    set(_out_dir  "${CMAKE_BINARY_DIR}/augment_generated")
+    set(_out_dir  "${CMAKE_CURRENT_BINARY_DIR}/augment_generated")
     set(_out_header "${_out_dir}/augment_exclusions.hpp")
 
     set(_prefix_file "${CMAKE_CURRENT_BINARY_DIR}/_augment_prefix_excl.txt")
@@ -134,9 +134,4 @@ function(augment_generate_exclusions)
     set_target_properties(${AGE_TARGET} PROPERTIES
         AUGMENT_EXCLUSIONS_HEADER "${_out_header}"
     )
-
-    if(TARGET augment)
-        target_include_directories(augment PRIVATE "${_out_dir}")
-        add_dependencies(augment ${AGE_TARGET}_augment_exclusions)
-    endif()
 endfunction()

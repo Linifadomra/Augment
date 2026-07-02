@@ -83,6 +83,11 @@ include(cmake/AugmentExclusions.cmake)
 include(cmake/AugmentCodegen.cmake)
 include(cmake/AugmentManifest.cmake)
 
+# Generates the exclusions header required by augment itself when building
+# standalone. Consumers generate their own exclusions independently
+# through augment_manifest().
+augment_generate_exclusions(TARGET augment)
+
 # == Examples ==
 if(AUGMENT_BUILD_EXAMPLES)
     add_subdirectory(examples)
