@@ -220,12 +220,19 @@ extern "C" AUGMENT_API void* augment_make_closure(const char* symbol) {
 }
 
 static void* resolve_call_target(const char* symbol) {
-    if (void* fn = augment::plat::sym_resolve(symbol))
-        return fn;
-    uint64_t rva = augment::manifest::global_reader().rva_of(symbol);
-    if (!rva)
-        return nullptr;
-    return reinterpret_cast<void*>((uintptr_t)((intptr_t)rva + augment::plat::image_slide()));
+    static std::unordered_map<std::string, void*> s_cache;
+    auto it = s_cache.find(symbol);
+    if (it != s_cache.end())
+        return it->second;
+
+    void* fn = nullptr;
+    if (uint64_t rva = augment::manifest::global_reader().rva_of(symbol)) {
+        fn = reinterpret_cast<void*>((uintptr_t)((intptr_t)rva + augment::plat::image_slide()));
+    } else if (void* p = augment::plat::sym_resolve(symbol)) {
+        fn = p;
+    }
+    s_cache.emplace(symbol, fn);
+    return fn;
 }
 
 extern "C" AUGMENT_API int augment_call(const char* symbol, void** args, unsigned nargs,
