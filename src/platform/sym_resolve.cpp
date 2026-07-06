@@ -369,6 +369,18 @@ void* sym_resolve(const char* symbol) {
     return reinterpret_cast<void*>(info->Address);
 }
 
+static BOOL CALLBACK gap_enum_cb(PSYMBOL_INFO sym, ULONG, PVOID user) {
+    auto* ctx = static_cast<gap_context*>(user);
+
+    if (sym->Address > ctx->target) {
+        uint64_t gap = sym->Address - ctx->target;
+        if (gap < ctx->best)
+            ctx->best = gap;
+    }
+
+    return TRUE;
+}
+
 uint64_t func_gap(void* target) {
     const image_syms& img = image();
     if (!target || !img.ok)
@@ -379,22 +391,7 @@ uint64_t func_gap(void* target) {
         UINT64_MAX
     };
 
-    SymEnumSymbols(
-        img.process,
-        img.base,
-        "*",
-        [](PSYMBOL_INFO sym, ULONG, PVOID user) -> BOOL {
-            auto* ctx = static_cast<gap_context*>(user);
-
-            if (sym->Address > ctx->target) {
-                uint64_t gap = sym->Address - ctx->target;
-                if (gap < ctx->best)
-                    ctx->best = gap;
-            }
-
-            return TRUE;
-        },
-        &ctx);
+    SymEnumSymbols(img.process, img.base, "*", gap_enum_cb, &ctx);
 
     return ctx.best;
 }

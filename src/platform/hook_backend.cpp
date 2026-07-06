@@ -16,6 +16,12 @@
 #include <cstdint>
 #include <cstring>
 
+#if defined(_WIN32)
+#include <MinHook.h>
+#else
+#include <dobby.h>
+#endif
+
 extern "C" int augment_plat_selftest_target(int x);
 extern "C" int augment_plat_selftest_replacement(int x);
 
@@ -23,8 +29,6 @@ namespace augment::plat {
 void selftest_bind_orig(void* orig);
 
 #if defined(_WIN32)
-
-#include <MinHook.h>
 
 namespace {
     bool mh_initialized = false;
@@ -47,8 +51,6 @@ bool hook_remove(void* target) {
 }
 
 #else
-
-#include <dobby.h>
 
 uint64_t func_gap(void* target);
 
