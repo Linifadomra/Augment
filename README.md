@@ -111,10 +111,6 @@ set(AUGMENT_SUBSTRING_EXCLUSIONS
 
 Exclusions are applied at every layer: symbols are filtered during the AST walk, stripped from the manifest, and blocked at runtime resolution. Built-in exclusions covering the C++ runtime, allocators, thread primitives, and Augment's own internals are always active regardless of what you specify here.
 
-## Usage
-
-A full usage example including Luau scripting support, the Petrichor.Mod lifecycle, and the foreign language consumer path can be found in [Petrichor](https://github.com/Linifadomra/Petrichor), our game-agnostic C++ modloader library built on Augment.
-
 ## Building
 
 In-depth building instructions can be found in the [building guide](docs/BUILDING.md)
