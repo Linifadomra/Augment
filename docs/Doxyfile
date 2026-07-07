@@ -1,4 +1,4 @@
-PROJECT_NAME = "Petrichor"
+PROJECT_NAME = "Augment"
 
 # Source scanning
 INPUT = README.md include/
