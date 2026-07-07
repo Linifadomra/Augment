@@ -1,3 +1,5 @@
+/// internal
+/// \cond
 
 #ifndef AUGMENT_API_H
 #define AUGMENT_API_H
@@ -41,3 +43,5 @@
 #endif
 
 #endif /* AUGMENT_API_H */
+
+/// \endcond

@@ -1,0 +1,50 @@
+PROJECT_NAME = "Petrichor"
+
+# Source scanning
+INPUT = README.md include/
+RECURSIVE = YES
+FILE_PATTERNS = *.h *.md
+
+# Documentation extraction
+USE_MDFILE_AS_MAINPAGE = README.md
+EXTRACT_ALL = NO
+EXTRACT_PRIVATE = NO
+EXTRACT_STATIC = NO
+HIDE_UNDOC_NAMESPACES = YES
+INTERNAL_DOCS = NO
+
+# Output
+GENERATE_HTML = YES
+GENERATE_LATEX = NO
+OUTPUT_DIRECTORY = $(READTHEDOCS_OUTPUT)
+HTML_OUTPUT = html
+
+# Usability improvements
+JAVADOC_AUTOBRIEF = YES
+QUIET = YES
+
+# Graphing
+HAVE_DOT = NO
+CALL_GRAPH = NO
+CALLER_GRAPH = NO
+COLLABORATION_GRAPH = NO
+INCLUDE_GRAPH = NO
+INCLUDED_BY_GRAPH = NO
+
+# Doxygen Awesome CSS
+DISABLE_INDEX = NO
+FULL_SIDEBAR = NO
+HTML_EXTRA_FILES = docs/doxygen-awesome-css/doxygen-awesome-darkmode-toggle.js
+HTML_EXTRA_STYLESHEET = docs/doxygen-awesome-css/doxygen-awesome.css \
+                        docs/doxygen-awesome-css/doxygen-awesome-sidebar-only.css \
+                        docs/doxygen-awesome-css/doxygen-awesome-sidebar-only-darkmode-toggle.css
+
+HTML_COLORSTYLE = LIGHT
+HTML_HEADER = docs/header.html
+HTML_COPY_CLIPBOARD = NO
+
+# Extra Markdown Options
+MARKDOWN_SUPPORT = YES
+AUTOLINK_SUPPORT = YES
+GENERATE_TREEVIEW = YES
+HTML_DYNAMIC_SECTIONS = YES

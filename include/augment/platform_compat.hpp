@@ -1,3 +1,6 @@
+/// internal
+/// \cond
+
 #pragma once
 
 #if defined(_MSC_VER)
@@ -11,3 +14,5 @@
   #define AUGMENT_NOINLINE __attribute__((noinline))
   #define AUGMENT_FORCEINLINE __attribute__((always_inline))
 #endif
+
+/// \endcond

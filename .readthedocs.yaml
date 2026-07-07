@@ -1,0 +1,13 @@
+version: 2
+
+build:
+  os: ubuntu-22.04
+
+  commands:
+    - curl -L https://www.doxygen.nl/files/doxygen-1.16.1.linux.bin.tar.gz | tar xz
+    - mv doxygen-1.16.1/bin/doxygen ./doxygen
+
+    - git submodule update --init --recursive
+    - ./doxygen docs/Doxyfile
+    - mkdir -p $READTHEDOCS_OUTPUT/html/assets
+    - cp -r assets/* $READTHEDOCS_OUTPUT/html/assets/

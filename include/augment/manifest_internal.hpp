@@ -1,3 +1,6 @@
+/// internal
+/// \cond
+
 #pragma once
 #include <cstdint>
 #include <cstring>
@@ -71,3 +74,5 @@ private:
 Reader& global_reader();
 
 } // namespace augment::manifest
+
+/// \endcond

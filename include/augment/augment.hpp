@@ -27,36 +27,98 @@ extern "C" {
 
 /* TYPES */
 
+/**
+ * @brief Function hook phase enum
+ */
 typedef enum AugmentPhase {
-    AUGMENT_PHASE_BEFORE  = 0,
-    AUGMENT_PHASE_AFTER   = 1,
+    /**
+     * @brief Hook is invoked before the original function body executes.
+     *
+     * The original function still runs afterward.
+     */
+    AUGMENT_PHASE_BEFORE = 0,
+
+    /**
+     * @brief Hook is invoked after the original function executes but before returning.
+     *
+     * Useful for inspecting or modifying the return value.
+     */
+    AUGMENT_PHASE_AFTER = 1,
+
+    /**
+     * @brief Hook completely replaces the original function.
+     *
+     * The original function is never called.
+     */
     AUGMENT_PHASE_REPLACE = 2,
 } AugmentPhase;
 
+/**
+ * @brief Context passed to a hooked function's callback
+ */
 typedef struct AugmentCtx {
-    void*    self;      // this pointer
-    void**   args;      // argument array, index 0 = first param
-    void*    ret;       // return value slot
-    int      cancelled; // set nonzero in before to skip original
-    void*    user;      // internal, do not touch
-    int      arg_count; // number of arguments
+    void*    self;      ///< this pointer
+    void**   args;      ///< argument array, index 0 = first param
+    void*    ret;       ///< return value slot
+    int      cancelled; ///< set nonzero in before to skip original
+    void*    user;      ///< internal, do not touch
+    int      arg_count; ///< number of arguments
 } AugmentCtx;
 
+/**
+ * @brief Signature for a hook callback function.
+ *
+ * @param ctx      Context for the current invocation (args, return slot, etc.)
+ * @param userdata User-supplied pointer passed through from registration.
+ */
 typedef void (*AugmentFn)(AugmentCtx* ctx, void* userdata);
 
+/**
+ * @brief Declares what a hook touches, for automated conflict detection.
+ *
+ * Hooks whose contracts overlap (e.g. one writes what another reads/affects)
+ * can be flagged instead of colliding silently.
+ */
 typedef struct AugmentContract {
-    const char* const* affects;  int n_affects;
-    const char* const* reads;    int n_reads;
-    const char* const* writes;   int n_writes;
+    const char* const* affects;  ///< Symbols/fields this hook affects (side effects)
+    int                n_affects;///< Number of entries in affects
+
+    const char* const* reads;    ///< Symbols/fields this hook reads
+    int                n_reads;  ///< Number of entries in reads
+
+    const char* const* writes;   ///< Symbols/fields this hook writes
+    int                n_writes; ///< Number of entries in writes
 } AugmentContract;
 
+/**
+ * @brief Options used when registering a hook.
+ */
 typedef struct AugmentRegOpts {
-    int                priority;
-    const char*        tag;
-    const char*        augment_id;
-    AugmentContract    contract;
+    int             priority;   ///< Execution order relative to other hooks (lower runs first)
+    const char*     tag;        ///< Human-readable label for logs / debug
+    const char*     augment_id; ///< Unique identifier for this hook registration
+    AugmentContract contract;   ///< Declared read/write/affects surface, for conflict detection
 } AugmentRegOpts;
 
+/**
+ * @def AUGMENT_HOOK(sym, fn)
+ * @brief Registers @p fn as a BEFORE-phase hook on @p sym at static-init time.
+ *
+ * Declares a file-scope struct whose constructor runs before main(),
+ * calling augment_register() to install @p fn as a hook. This lets a hook
+ * be registered just by writing a single macro invocation at file scope,
+ * with no explicit init function required.
+ *
+ * @param sym Symbol to hook (unquoted identifier; stringified internally).
+ * @param fn  Callable invoked as `fn(ctx)` when the hook fires.
+ *
+ * @note Currently unused directly by hand-written code. Intended to be
+ *       emitted by codegen from source annotations (e.g. an attribute or
+ *       comment marker on a function), rather than written manually.
+ * @note Always registers with phase AUGMENT_PHASE_BEFORE and no tag/contract.
+ *       If codegen needs to control phase or contract, this macro will need
+ *       additional parameters or sibling macros (e.g. AUGMENT_HOOK_AFTER).
+ */
 #define AUGMENT_HOOK(sym, fn)                                           \
     static struct _AugmentAutoHook_##sym {                              \
         _AugmentAutoHook_##sym() {                                      \
@@ -69,9 +131,45 @@ typedef struct AugmentRegOpts {
         }                                                               \
     } _augment_autohook_instance_##sym
 
+/**
+ * @brief Registers a live instance pointer under a class name for later lookup.
+ *
+ * Used so that member-function calls made via augment_call() can resolve
+ * a 'this' pointer without the caller needing to track instances manually.
+ * Duplicate pointers already tracked under @p class_name are ignored.
+ *
+ * @param class_name Name identifying the instance's class (matches self_view).
+ * @param ptr        Instance pointer to track.
+ */
 AUGMENT_API void  augment_register_instance(const char* class_name, void* ptr);
+
+/**
+ * @brief Removes a previously registered instance pointer.
+ *
+ * No-op if @p class_name is unknown or @p ptr was never registered.
+ *
+ * @param class_name Name identifying the instance's class.
+ * @param ptr        Instance pointer to stop tracking.
+ */
 AUGMENT_API void  augment_unregister_instance(const char* class_name, void* ptr);
+
+/**
+ * @brief Retrieves a tracked instance pointer by index.
+ *
+ * @param class_name Name identifying the instance's class.
+ * @param index       Index into the tracked instances, or negative for the
+ *                     most recently registered instance.
+ * @return Instance pointer, or nullptr if @p class_name is unknown, has no
+ *         tracked instances, or @p index is out of range.
+ */
 AUGMENT_API void* augment_get_instance(const char* class_name, int index);
+
+/**
+ * @brief Returns the number of instances currently tracked for a class.
+ *
+ * @param class_name Name identifying the instance's class.
+ * @return Count of tracked instances, or 0 if @p class_name is unknown.
+ */
 AUGMENT_API int augment_instance_count(const char* class_name);
 
 /* API */
