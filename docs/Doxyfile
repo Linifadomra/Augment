@@ -1,9 +1,9 @@
 PROJECT_NAME = "Augment"
 
 # Source scanning
-INPUT = README.md include/
+INPUT = README.md include/ docs/
 RECURSIVE = YES
-FILE_PATTERNS = *.h *.md
+FILE_PATTERNS = *.hpp *.md
 
 # Documentation extraction
 USE_MDFILE_AS_MAINPAGE = README.md
