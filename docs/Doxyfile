@@ -1,7 +1,7 @@
 PROJECT_NAME = "Augment"
 
 # Source scanning
-INPUT = README.md include/ docs/
+INPUT = README.md include/ docs/BUILDING.md
 RECURSIVE = YES
 FILE_PATTERNS = *.hpp *.md
 
