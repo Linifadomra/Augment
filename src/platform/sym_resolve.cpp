@@ -286,7 +286,9 @@ void* sym_resolve(const char* symbol) {
     return nullptr;
 }
 
-intptr_t image_slide() { return 0; }
+intptr_t image_slide() {
+    return static_cast<intptr_t>(load_bias());
+}
 
 uint64_t func_gap(void* target) {
     const image_syms& img = image();
