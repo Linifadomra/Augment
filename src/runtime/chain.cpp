@@ -24,13 +24,11 @@ void Chain::add(const Entry& e) {
 }
 
 void Chain::remove_augment(const std::string& augment_id) {
-    auto prev = entries.size();
     entries.erase(
         std::remove_if(entries.begin(), entries.end(),
             [&](const Entry& e) { return e.augment_id == augment_id; }),
         entries.end()
     );
-    if (entries.size() != prev) dirty = true;
 }
 
 void Chain::sort() {

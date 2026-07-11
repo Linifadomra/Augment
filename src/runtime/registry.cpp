@@ -110,6 +110,7 @@ bool Registry::register_augment(const char* symbol, AugmentPhase phase,
     }
 
     chain->add(e);
+    chain->sort();
 
     if (m_installed && !chain->installed) {
         std::string sym = symbol;
