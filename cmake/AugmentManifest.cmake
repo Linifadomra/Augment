@@ -194,7 +194,8 @@ function(augment_manifest)
             OUTPUT "${_agmf_out}" "${_json_out}"
             COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
             COMMAND ${_phase2_cmd} "--binary" "${_dbg}"
-            DEPENDS "${_binary_dep}"
+            ${_strip_cmd}
+            DEPENDS "${_binary_dep}" "${_ast_manifest}"
             COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
             USES_TERMINAL
             VERBATIM
@@ -209,7 +210,7 @@ function(augment_manifest)
             OUTPUT "${_agmf_out}" "${_json_out}"
             COMMAND ${_phase2_cmd}
             ${_strip_cmd}
-            DEPENDS "${_binary_dep}"
+            DEPENDS "${_binary_dep}" "${_ast_manifest}"
             COMMENT "augment: phase2 RVA extraction + pack for ${AM_TARGET}"
             USES_TERMINAL
             VERBATIM
