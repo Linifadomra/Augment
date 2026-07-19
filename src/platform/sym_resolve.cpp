@@ -192,6 +192,10 @@ uint64_t func_gap(void* target) {
     return best;
 }
 
+bool image_identity(uint64_t* guid_lo, uint64_t* guid_hi, uint32_t* age) {
+    return false;
+}
+
 } // namespace augment::plat
 
 #elif defined(__linux__)
@@ -290,6 +294,10 @@ intptr_t image_slide() {
     return static_cast<intptr_t>(load_bias());
 }
 
+bool image_identity(uint64_t* guid_lo, uint64_t* guid_hi, uint32_t* age) {
+    return false;
+}
+
 uint64_t func_gap(void* target) {
     const image_syms& img = image();
     if (!img.ok) return UINT64_MAX;
@@ -311,6 +319,10 @@ uint64_t func_gap(void* target) {
 
 #include <windows.h>
 #include <dbghelp.h>
+
+#include <mutex>
+#include <string>
+#include <unordered_map>
 
 #pragma comment(lib, "dbghelp.lib")
 
@@ -357,18 +369,31 @@ void* sym_resolve(const char* symbol) {
     if (!symbol || !img.ok)
         return nullptr;
 
+    static std::unordered_map<std::string, void*> s_resolveCache;
+    static std::mutex s_resolveCacheMutex;
+    {
+        std::lock_guard<std::mutex> lock(s_resolveCacheMutex);
+        auto it = s_resolveCache.find(symbol);
+        if (it != s_resolveCache.end())
+            return it->second;
+    }
+
     char storage[sizeof(SYMBOL_INFO) + MAX_SYM_NAME];
     auto* info = reinterpret_cast<PSYMBOL_INFO>(storage);
     info->SizeOfStruct = sizeof(SYMBOL_INFO);
     info->MaxNameLen   = MAX_SYM_NAME;
 
-    if (!SymFromName(img.process, symbol, info))
-        return nullptr;
+    void* result = nullptr;
+    if (SymFromName(img.process, symbol, info) &&
+        !augment::augment_should_exclude(info->Name)) {
+        result = reinterpret_cast<void*>(info->Address);
+    }
 
-    if (augment::augment_should_exclude(info->Name))
-        return nullptr;
-
-    return reinterpret_cast<void*>(info->Address);
+    {
+        std::lock_guard<std::mutex> lock(s_resolveCacheMutex);
+        s_resolveCache.emplace(symbol, result);
+    }
+    return result;
 }
 
 static BOOL CALLBACK gap_enum_cb(PSYMBOL_INFO sym, ULONG, PVOID user) {
@@ -406,6 +431,52 @@ intptr_t image_slide() {
     auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
     if (nt->Signature != IMAGE_NT_SIGNATURE) return 0;
     return reinterpret_cast<intptr_t>(base);
+}
+
+bool image_identity(uint64_t* guid_lo, uint64_t* guid_hi, uint32_t* age) {
+    auto* base = reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr));
+    if (!base) return false;
+    auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return false;
+    auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) return false;
+
+    const IMAGE_DATA_DIRECTORY& dir =
+        nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG];
+    if (!dir.VirtualAddress || dir.Size < sizeof(IMAGE_DEBUG_DIRECTORY)) return false;
+
+    auto* dbg = reinterpret_cast<const IMAGE_DEBUG_DIRECTORY*>(base + dir.VirtualAddress);
+    const unsigned count = dir.Size / sizeof(IMAGE_DEBUG_DIRECTORY);
+    for (unsigned i = 0; i < count; ++i) {
+        if (dbg[i].Type != IMAGE_DEBUG_TYPE_CODEVIEW || !dbg[i].AddressOfRawData) continue;
+        if (dbg[i].SizeOfData < 24) continue;
+        const uint8_t* cv = base + dbg[i].AddressOfRawData;
+        uint32_t sig;
+        std::memcpy(&sig, cv, 4);
+        if (sig != 0x53445352) continue;
+
+        uint32_t d1; uint16_t d2, d3; uint8_t d4[8];
+        std::memcpy(&d1, cv + 4, 4);
+        std::memcpy(&d2, cv + 8, 2);
+        std::memcpy(&d3, cv + 10, 2);
+        std::memcpy(d4, cv + 12, 8);
+
+        uint64_t lo = (static_cast<uint64_t>(d1) << 32) |
+                      (static_cast<uint64_t>(d2) << 16) |
+                       static_cast<uint64_t>(d3);
+        uint64_t hi = 0;
+        for (int b = 0; b < 8; ++b)
+            hi = (hi << 8) | d4[b];
+
+        uint32_t cv_age;
+        std::memcpy(&cv_age, cv + 20, 4);
+
+        if (guid_lo) *guid_lo = lo;
+        if (guid_hi) *guid_hi = hi;
+        if (age)     *age = cv_age;
+        return true;
+    }
+    return false;
 }
 
 } // namespace augment::plat
