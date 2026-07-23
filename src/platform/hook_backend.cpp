@@ -25,6 +25,8 @@
 extern "C" int augment_plat_selftest_target(int x);
 extern "C" int augment_plat_selftest_replacement(int x);
 
+void augment_log(const char* tag, const char* fmt, ...);
+
 namespace augment::plat {
 void selftest_bind_orig(void* orig);
 
@@ -37,11 +39,24 @@ namespace {
 bool hook_install(void* target, void* replacement, void** out_original) {
     if (!target) return false;
     if (!mh_initialized) {
-        if (MH_Initialize() != MH_OK) return false;
+        MH_STATUS initStatus = MH_Initialize();
+        if (initStatus != MH_OK) {
+            augment_log("augment", "MH_Initialize failed: %s", MH_StatusToString(initStatus));
+            return false;
+        }
         mh_initialized = true;
     }
-    if (MH_CreateHook(target, replacement, out_original) != MH_OK) return false;
-    return MH_EnableHook(target) == MH_OK;
+    MH_STATUS createStatus = MH_CreateHook(target, replacement, out_original);
+    if (createStatus != MH_OK) {
+        augment_log("augment", "MH_CreateHook failed for target=%p: %s", target, MH_StatusToString(createStatus));
+        return false;
+    }
+    MH_STATUS enableStatus = MH_EnableHook(target);
+    if (enableStatus != MH_OK) {
+        augment_log("augment", "MH_EnableHook failed for target=%p: %s", target, MH_StatusToString(enableStatus));
+        return false;
+    }
+    return true;
 }
 
 bool hook_remove(void* target) {
