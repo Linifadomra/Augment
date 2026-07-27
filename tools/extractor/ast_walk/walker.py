@@ -149,22 +149,35 @@ def walk(
     if index is None:
         index = _cx.Index.create()
 
-    fallback_flags = [
-        "-x", "c++",
-        "-std=c++17",
-        "-fms-compatibility",
-        "-fms-compatibility-version=19.40",
-        "-Wno-everything"
-    ]
-
     cleaned_flags = []
-    for flag in flags:
+    i = 0
+    while i < len(flags):
+        flag = flags[i]
         if flag.startswith("/I"):
             cleaned_flags.append(f"-I{flag[2:]}")
-        elif flag.startswith("-I") or flag.startswith("-D") or flag.startswith("/D"):
-            cleaned_flags.append(flag.replace("/D", "-D"))
-        elif flag.startswith("/std:") or flag.startswith("-std="):
-            continue
+        elif flag.startswith("/D"):
+            cleaned_flags.append("-D" + flag[2:])
+        elif flag in ("-include", "-isystem", "-iframework", "-cxx-isystem",
+                      "-iquote", "-idirafter", "-isysroot"):
+            cleaned_flags.append(flag)
+            if i + 1 < len(flags) and not flags[i + 1].startswith("-"):
+                cleaned_flags.append(flags[i + 1])
+                i += 1
+        elif flag.startswith("-I") or flag.startswith("-D"):
+            cleaned_flags.append(flag)
+        elif flag.startswith("-isystem") or flag.startswith("-include"):
+            cleaned_flags.append(flag)
+        elif flag.startswith("/std:"):
+            cleaned_flags.append("-std=" + flag[len("/std:"):])
+        elif flag.startswith("-std="):
+            cleaned_flags.append(flag)
+        i += 1
+
+    has_std = any(f.startswith("-std=") for f in cleaned_flags)
+    fallback_flags = ["-x", "c++"]
+    if not has_std:
+        fallback_flags.append("-std=c++17")
+    fallback_flags.append("-Wno-everything")
 
     parse_flags = cleaned_flags + fallback_flags
 
