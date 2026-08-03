@@ -23,7 +23,6 @@
 *.dll
 *.so.*
 
-
 # Fortran module files
 *.mod
 *.smod
@@ -99,3 +98,7 @@ coverage.xml
 .mypy_cache/
 .ruff_cache/
 /build_ninja
+
+# Exceptions
+!libffi-8.dll
+!libffi-8.lib
