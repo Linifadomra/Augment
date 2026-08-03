@@ -18,6 +18,7 @@ if(NOT TARGET ffi)
             if(WIN32)
                 set(FFI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/libffi-prebuilt/include" CACHE PATH "" FORCE)
                 set(FFI_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/external/libffi-prebuilt/libffi-8.lib" CACHE FILEPATH "" FORCE)
+                set(FFI_DLL "${CMAKE_CURRENT_SOURCE_DIR}/external/libffi-prebuilt/libffi-8.dll" CACHE FILEPATH "" FORCE)
             elseif(APPLE)
                 find_path(FFI_INCLUDE_DIR NAMES ffi.h PATH_SUFFIXES ffi
                     HINTS
