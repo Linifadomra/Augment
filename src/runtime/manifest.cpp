@@ -17,7 +17,54 @@
 #include <fstream>
 #include <cstring>
 
+#include "internal.hpp"
+
+namespace augment::plat {
+bool image_identity(uint64_t* guid_lo, uint64_t* guid_hi, uint32_t* age);
+}
+
 namespace augment::manifest {
+
+bool rva_fallback_allowed() {
+    static int cached = -1;
+    if (cached >= 0) return cached == 1;
+
+    uint64_t img_lo = 0, img_hi = 0;
+    uint32_t img_age = 0;
+    if (!plat::image_identity(&img_lo, &img_hi, &img_age)) {
+        cached = 1;
+        return true;
+    }
+
+    Reader& r = global_reader();
+    const char* kind = nullptr;
+    uint64_t man_lo = 0, man_hi = 0, man_age = 0;
+    bool has_lo  = r.global("__augment_pdb_guid_lo", &kind, &man_lo);
+    bool has_hi  = r.global("__augment_pdb_guid_hi", &kind, &man_hi);
+    bool has_age = r.global("__augment_pdb_age", &kind, &man_age);
+
+    if (!has_lo || !has_hi || !has_age) {
+        augment_log("augment",
+                    "manifest has no image identity stamp; refusing RVA fallback "
+                    "(regenerate augment.bin with gen_manifest from this exact build)");
+        cached = 0;
+        return false;
+    }
+
+    if (man_lo != img_lo || man_hi != img_hi || man_age != (uint64_t)img_age) {
+        augment_log("augment",
+                    "manifest identity mismatch (manifest %016llx%016llx age %llu vs image "
+                    "%016llx%016llx age %u); refusing RVA fallback, regenerate augment.bin",
+                    (unsigned long long)man_lo, (unsigned long long)man_hi,
+                    (unsigned long long)man_age,
+                    (unsigned long long)img_lo, (unsigned long long)img_hi, img_age);
+        cached = 0;
+        return false;
+    }
+
+    cached = 1;
+    return true;
+}
 
 namespace {
 template <class T> T rd(const uint8_t* p) { T v; std::memcpy(&v, p, sizeof(T)); return v; }
@@ -139,7 +186,7 @@ bool Reader::global(const char* name, const char** kind_out, uint64_t* addr_out)
     if (recs.empty()) return false;
     const uint8_t* p = recs[0];
     *kind_out = str(rd<uint32_t>(p));
-    *addr_out = rd<uint64_t>(p + 4);
+    *addr_out = rd<uint64_t>(p + 8);
     return true;
 }
 

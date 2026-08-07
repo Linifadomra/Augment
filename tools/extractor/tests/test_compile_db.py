@@ -104,6 +104,20 @@ def test_includes_defines_std_preserved(tmp_path):
     assert "-I/usr/include" in flags
     assert "-Wextra" in flags
 
+def test_include_header_argument_preserved(tmp_path):
+    """Forced includes are `.h` paths and must not be stripped as source files."""
+    src = tmp_path / "a.cpp"
+    hdr = tmp_path / "force.h"
+    db = _write_db(tmp_path, [{
+        "file": str(src),
+        "arguments": ["clang++", "-include", str(hdr), "-g", str(src)],
+    }])
+    flags = load(db)[str(src)]
+    assert "-include" in flags
+    assert str(hdr) in flags
+    assert flags[flags.index("-include") + 1] == str(hdr)
+    assert "-g" in flags
+
 def test_relative_file_resolved_against_directory(tmp_path):
     src = tmp_path / "src" / "foo.cpp"
     src.parent.mkdir()

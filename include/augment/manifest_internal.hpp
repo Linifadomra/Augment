@@ -73,6 +73,8 @@ private:
 
 Reader& global_reader();
 
+bool rva_fallback_allowed();
+
 } // namespace augment::manifest
 
 /// \endcond

@@ -35,7 +35,7 @@ set(_AUGMENT_BUILTIN_PREFIX_EXCLUSIONS
     "std::"                 # standard lib
     "boost::"               # boost lib
     "__gnu_cxx::"           # gnu specific
-    "$_",                   # compiler-generated
+    [[$_]]                  # compiler-generated
     "zz::"                  # dobby
     "AssemblerCodeBuilder"  # dobby
     "ClearCache"            # dobby

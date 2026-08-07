@@ -133,7 +133,7 @@ void* Registry::resolve_target(const std::string& symbol) {
         return p;
 
     uint64_t rva = manifest::global_reader().rva_of(symbol.c_str());
-    if (rva) {
+    if (rva && manifest::rva_fallback_allowed()) {
         if (void* p = reinterpret_cast<void*>(static_cast<uintptr_t>(rva + plat::image_slide())))
             return p;
     }

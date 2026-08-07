@@ -26,3 +26,6 @@ class DebugInfoBackend(ABC):
 
     def extract_struct_layouts(self, binary_path: str) -> Dict[str, Dict]:
         return {}
+
+    def image_identity(self, binary_path: str) -> Dict[str, int] | None:
+        return None

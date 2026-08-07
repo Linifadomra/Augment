@@ -172,7 +172,11 @@ def _extract_flags(entry: dict, file_path: str) -> List[str]:
 def _strip_non_flags(argv: List[str], file_path: str) -> List[str]:
     flags: List[str] = []
     skip_next = False
-    file_path_obj = Path(file_path)
+    takes_path_arg = {
+        "-include", "-isystem", "-iframework", "-cxx-isystem",
+        "-I", "-D", "-L", "-F", "-iquote", "-idirafter",
+        "-isysroot", "-sysroot",
+    }
 
     for i, arg in enumerate(argv):
         if i == 0:
@@ -192,6 +196,12 @@ def _strip_non_flags(argv: List[str], file_path: str) -> List[str]:
             continue
         if arg.startswith("/FI") or arg.startswith("-FI"):
             flags.append(arg)
+            continue
+        if arg in takes_path_arg:
+            flags.append(arg)
+            if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
+                flags.append(argv[i + 1])
+                skip_next = True
             continue
         if not arg.startswith("-"):
             arg_path = Path(arg)

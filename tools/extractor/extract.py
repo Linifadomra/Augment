@@ -250,27 +250,40 @@ def phase1(
     return combined
 
 
-def _apply_struct_layouts(structs: List[dict], layouts: Dict[str, dict]) -> int:
-    filled = 0
+def _apply_struct_layouts(structs: List[dict], layouts: Dict[str, dict]) -> Dict[str, int]:
+    stats = {"structs": 0, "overridden": 0, "filled": 0, "sizes": 0, "kept": 0}
     for s in structs:
         lay = layouts.get(s.get("name"))
         if not lay:
+            stats["kept"] += 1
             continue
         lfields = lay.get("fields") or {}
+        touched = False
         for f in s.get("fields") or []:
-            off = f.get("offset")
-            if off is None or off < 0:
-                entry = lfields.get(f.get("name"))
-                new_off = _layout_field_offset(entry)
-                if new_off is not None:
-                    f["offset"] = new_off
-                    filled += 1
+            entry = lfields.get(f.get("name"))
+            new_off = _layout_field_offset(entry)
+            if new_off is None:
+                continue
+            old = f.get("offset")
+            if old is None or old < 0:
+                f["offset"] = new_off
+                stats["filled"] += 1
+                touched = True
                 kind = _layout_field_kind(entry)
                 if kind and (not f.get("kind") or f.get("kind") == "ptr"):
                     f["kind"] = kind
-        if (s.get("size") or 0) <= 1 and lay.get("size"):
-            s["size"] = lay["size"]
-    return filled
+            elif old != new_off:
+                f["offset"] = new_off
+                stats["overridden"] += 1
+                touched = True
+        new_size = lay.get("size")
+        if isinstance(new_size, int) and new_size > 0 and (s.get("size") or 0) != new_size:
+            s["size"] = new_size
+            stats["sizes"] += 1
+            touched = True
+        if touched:
+            stats["structs"] += 1
+    return stats
 
 
 def _layout_field_offset(entry) -> Optional[int]:
@@ -381,17 +394,37 @@ def phase2(
 
     struct_layouts = backend.extract_struct_layouts(binary_path)
     if struct_layouts:
-        filled = _apply_struct_layouts(manifest["structs"], struct_layouts)
+        stats = _apply_struct_layouts(manifest["structs"], struct_layouts)
         added = _inject_missing_structs(
             manifest["structs"],
             struct_layouts,
             _collect_struct_views(manifest),
         )
-        log.info(
-            "struct layouts: filled %d field offsets, injected %d missing struct(s)",
-            filled,
-            added,
+        layout_summary = (
+            f"[extract] {backend.name} struct layouts: "
+            f"{stats['structs']} structs corrected "
+            f"({stats['overridden']} member offsets overridden, "
+            f"{stats['filled']} filled, {stats['sizes']} sizes), "
+            f"{stats['kept']} structs kept AST-only, "
+            f"{added} injected"
         )
+        print(layout_summary)
+        log.info(layout_summary)
+
+    identity = backend.image_identity(binary_path)
+    if identity:
+        manifest.setdefault("globals", []).extend([
+            {"name": "__augment_pdb_guid_lo", "kind": "augment_identity",
+             "addr": hex(identity["guid_lo"])},
+            {"name": "__augment_pdb_guid_hi", "kind": "augment_identity",
+             "addr": hex(identity["guid_hi"])},
+            {"name": "__augment_pdb_age", "kind": "augment_identity",
+             "addr": hex(identity["age"])},
+        ])
+        log.info("stamped image identity: guid %016x%016x age %d",
+                 identity["guid_lo"], identity["guid_hi"], identity["age"])
+    else:
+        log.warning("no image identity available; manifest will not be verifiable at runtime")
 
     from extractor.output.pack import pack
     out = Path(output_path)

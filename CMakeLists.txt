@@ -28,6 +28,7 @@ endif()
 if(AUGMENT_FFI)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/libffi.cmake)
 endif()
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/libffiDLL.cmake)
 
 # == TARGETS ==
 add_library(augment)
