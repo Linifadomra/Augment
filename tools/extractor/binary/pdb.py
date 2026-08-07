@@ -55,62 +55,149 @@ _NAME_RE      = re.compile(r'`([^`]+)`')
 _FIELDLIST_RE = re.compile(r'field list:\s*(0x[0-9A-Fa-f]+|<no type>)')
 _SIZEOF_RE    = re.compile(r'sizeof\s+(\d+)')
 _MEMBER_RE    = re.compile(r'-\s*LF_MEMBER\s*\[name = `(.+?)`,.*?\boffset = (-?\d+)')
+_BCLASS_RE    = re.compile(r'type\s*=\s*(0x[0-9A-Fa-f]+),\s*offset\s*=\s*(\d+)')
+_INDEX_RE     = re.compile(r'-\s*LF_INDEX\s+continuation\s*=\s*(0x[0-9A-Fa-f]+)')
+
+_CLASS_KINDS = frozenset({"CLASS", "STRUCTURE", "UNION"})
+
+
+def _resolve_fieldlist(fid, fieldlists):
+    members: Dict[str, int] = {}
+    bases = []
+    seen = set()
+    while fid and fid not in seen:
+        seen.add(fid)
+        fl = fieldlists.get(fid)
+        if fl is None:
+            break
+        for n, o in fl["members"].items():
+            if n not in members:
+                members[n] = o
+        bases.extend(fl["bases"])
+        fid = fl["cont"]
+    return members, bases
+
+
+def _resolve_layouts(classes, fieldlists, id_to_name, by_name) -> Dict[str, Dict]:
+    chosen: Dict[str, Tuple[dict, Dict[str, int], list]] = {}
+    for name, ids in by_name.items():
+        best = None
+        best_count = -1
+        for cid in ids:
+            c = classes[cid]
+            if c["fwdref"] or not c["fieldlist"]:
+                continue
+            members, bases = _resolve_fieldlist(c["fieldlist"], fieldlists)
+            count = len(members) + len(bases)
+            if count > best_count:
+                best_count = count
+                best = (c, members, bases)
+        if best is not None:
+            chosen[name] = best
+
+    memo: Dict[str, Dict[str, int]] = {}
+    visiting: set = set()
+
+    def flatten(name):
+        cached = memo.get(name)
+        if cached is not None:
+            return cached
+        entry = chosen.get(name)
+        if entry is None or name in visiting:
+            return {}
+        visiting.add(name)
+        _, members, bases = entry
+        flat = dict(members)
+        for bid, boff in bases:
+            bname = id_to_name.get(bid)
+            if not bname:
+                continue
+            for n, o in flatten(bname).items():
+                if n not in flat:
+                    flat[n] = o + boff
+        visiting.discard(name)
+        memo[name] = flat
+        return flat
+
+    out: Dict[str, Dict] = {}
+    for name, (c, _members, _bases) in chosen.items():
+        fields = flatten(name)
+        if not fields and not c["size"]:
+            continue
+        out[name] = {"size": c["size"], "fields": fields}
+    return out
 
 
 def _parse_types_stream(lines) -> Dict[str, Dict]:
-    classes: Dict[str, Dict] = {}
-    fieldlists: Dict[str, Dict[str, int]] = {}
+    classes: Dict[str, dict] = {}
+    fieldlists: Dict[str, dict] = {}
+    id_to_name: Dict[str, str] = {}
+    by_name: Dict[str, list] = {}
 
     cur_kind = None
-    cur_name = None
-    cur_fl = None
-    cur_size = None
-    cur_members: Dict[str, int] = {}
+    cur = None
+    pending_base = False
 
-    def flush():
-        if cur_kind in ("CLASS", "STRUCTURE") and cur_name:
-            prev = classes.get(cur_name)
-            if prev is None or (
-                prev.get("fieldlist") in (None, "<no type>")
-                and cur_fl not in (None, "<no type>")
-            ):
-                classes[cur_name] = {"size": cur_size, "fieldlist": cur_fl}
-        elif cur_kind == "FIELDLIST" and cur_id:
-            fieldlists[cur_id] = cur_members
-
-    cur_id = None
     for line in lines:
-        m = _REC_START_RE.match(line)
-        if m:
-            flush()
-            cur_id, cur_kind, rest = m.group(1), m.group(2), m.group(3)
-            cur_name = cur_fl = cur_size = None
-            cur_members = {}
-            if cur_kind in ("CLASS", "STRUCTURE"):
-                nm = _NAME_RE.search(rest)
-                cur_name = nm.group(1) if nm else None
+        if '| LF_' in line:
+            m = _REC_START_RE.match(line)
+            if m:
+                cur_id, kind, rest = m.group(1), m.group(2), m.group(3)
+                pending_base = False
+                if kind in _CLASS_KINDS:
+                    nm = _NAME_RE.search(rest)
+                    name = nm.group(1) if nm else None
+                    cur_kind = "CLASS"
+                    cur = {"name": name, "size": None, "fieldlist": None,
+                           "fwdref": False}
+                    classes[cur_id] = cur
+                    if name:
+                        id_to_name[cur_id] = name
+                        by_name.setdefault(name, []).append(cur_id)
+                elif kind == "FIELDLIST":
+                    cur_kind = "FIELDLIST"
+                    cur = {"members": {}, "bases": [], "cont": None}
+                    fieldlists[cur_id] = cur
+                else:
+                    cur_kind = None
+                    cur = None
+                continue
+        if cur_kind is None:
             continue
-        if cur_kind in ("CLASS", "STRUCTURE"):
-            fm = _FIELDLIST_RE.search(line)
-            if fm:
-                cur_fl = fm.group(1)
-            sm = _SIZEOF_RE.search(line)
-            if sm:
-                cur_size = int(sm.group(1))
-        elif cur_kind == "FIELDLIST":
+        if cur_kind == "FIELDLIST":
+            if pending_base:
+                pending_base = False
+                bm = _BCLASS_RE.search(line)
+                if bm:
+                    cur["bases"].append((bm.group(1), int(bm.group(2))))
+                continue
+            if '- LF_' not in line:
+                continue
             mm = _MEMBER_RE.search(line)
             if mm:
-                cur_members[mm.group(1)] = int(mm.group(2))
-    flush()
+                name = mm.group(1)
+                if name not in cur["members"]:
+                    cur["members"][name] = int(mm.group(2))
+                continue
+            if '- LF_BCLASS' in line:
+                pending_base = True
+                continue
+            im = _INDEX_RE.search(line)
+            if im:
+                cur["cont"] = im.group(1)
+        else:
+            if 'field list:' in line:
+                fm = _FIELDLIST_RE.search(line)
+                if fm and fm.group(1) != '<no type>':
+                    cur["fieldlist"] = fm.group(1)
+            if 'forward ref' in line:
+                cur["fwdref"] = True
+            if 'sizeof' in line:
+                sm = _SIZEOF_RE.search(line)
+                if sm:
+                    cur["size"] = int(sm.group(1))
 
-    out: Dict[str, Dict] = {}
-    for name, info in classes.items():
-        fl = info.get("fieldlist")
-        out[name] = {
-            "size":   info.get("size"),
-            "fields": fieldlists.get(fl, {}) if fl else {},
-        }
-    return out
+    return _resolve_layouts(classes, fieldlists, id_to_name, by_name)
 
 def _parse_section_headers(text: str) -> Dict[int, int]:
     """Return {section_index: virtual_address_int}."""
@@ -214,6 +301,31 @@ class PdbBackend(DebugInfoBackend):
         text = result.stdout
         section_map = _parse_section_headers(text)
         return _parse_function_rvas(text, section_map)
+
+    def image_identity(self, binary_path: str) -> Dict[str, int] | None:
+        if not _PDBUTIL:
+            return None
+        result = subprocess.run(
+            [_PDBUTIL, "dump", "--summary", binary_path],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        if result.returncode != 0:
+            return None
+        guid_m = re.search(r'GUID:\s*\{([0-9A-Fa-f-]+)\}', result.stdout)
+        age_m = re.search(r'Age:\s*(\d+)', result.stdout)
+        if not guid_m or not age_m:
+            return None
+        dashless = guid_m.group(1).replace("-", "")
+        if len(dashless) != 32:
+            return None
+        return {
+            "guid_lo": int(dashless[:16], 16),
+            "guid_hi": int(dashless[16:], 16),
+            "age": int(age_m.group(1)),
+        }
 
     def extract_struct_layouts(self, binary_path: str) -> Dict[str, Dict]:
         if not _PDBUTIL:

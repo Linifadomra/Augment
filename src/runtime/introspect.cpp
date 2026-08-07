@@ -165,6 +165,7 @@ extern "C" AUGMENT_API int augment_global_addr(const char* name, const char** ki
         *addr_out = resolved;
         return 1;
     }
+    if (!augment::manifest::rva_fallback_allowed()) return 0;
     *addr_out = reinterpret_cast<void*>((uintptr_t)(a + static_cast<uint64_t>(augment::plat::image_slide())));
     return 1;
 }

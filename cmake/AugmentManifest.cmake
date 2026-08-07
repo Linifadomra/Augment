@@ -5,7 +5,7 @@ if(NOT DEFINED AUGMENT_EXTRACT_SCRIPT)
 endif()
 
 function(augment_manifest)
-    cmake_parse_arguments(AM "SEPARATE_TARGET;REGENERATE_AST"
+    cmake_parse_arguments(AM "SEPARATE_TARGET;REGENERATE_AST;POST_BUILD"
         "TARGET;OUTPUT;BINARY;BINARY_STAMP;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT;PCH_OUT;AST_MANIFEST_HINT_DIR"
         "EXCLUDE;EXCLUDE_PREFIX;EXCLUDE_PATH"
         ${ARGN})
@@ -219,6 +219,19 @@ function(augment_manifest)
 
     add_custom_target("${AM_TARGET}_augment_phase2" DEPENDS "${_agmf_out}")
     add_dependencies("${AM_TARGET}_augment_phase2" "${AM_TARGET}")
+
+    if(AM_POST_BUILD AND TARGET ${AM_TARGET} AND NOT APPLE)
+        if(_committed_ast_manifest)
+            add_custom_command(TARGET ${AM_TARGET} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${_committed_ast_manifest}" "${_ast_manifest}"
+                VERBATIM)
+        endif()
+        add_custom_command(TARGET ${AM_TARGET} POST_BUILD
+            COMMAND ${_phase2_cmd}
+            COMMENT "augment: post-build manifest regen for ${AM_TARGET}"
+            VERBATIM)
+    endif()
 
     if(AM_SEPARATE_TARGET)
         add_custom_target(gen_manifest_phase1)

@@ -223,7 +223,7 @@ static void* resolve_call_target(const char* symbol) {
     if (void* fn = augment::plat::sym_resolve(symbol))
         return fn;
     uint64_t rva = augment::manifest::global_reader().rva_of(symbol);
-    if (!rva)
+    if (!rva || !augment::manifest::rva_fallback_allowed())
         return nullptr;
     return reinterpret_cast<void*>((uintptr_t)((intptr_t)rva + augment::plat::image_slide()));
 }
