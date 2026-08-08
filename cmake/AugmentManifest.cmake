@@ -220,17 +220,26 @@ function(augment_manifest)
     add_custom_target("${AM_TARGET}_augment_phase2" DEPENDS "${_agmf_out}")
     add_dependencies("${AM_TARGET}_augment_phase2" "${AM_TARGET}")
 
-    if(AM_POST_BUILD AND TARGET ${AM_TARGET} AND NOT APPLE)
+    if(AM_POST_BUILD AND TARGET ${AM_TARGET})
         if(_committed_ast_manifest)
             add_custom_command(TARGET ${AM_TARGET} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${_committed_ast_manifest}" "${_ast_manifest}"
                 VERBATIM)
         endif()
-        add_custom_command(TARGET ${AM_TARGET} POST_BUILD
-            COMMAND ${_phase2_cmd}
-            COMMENT "augment: post-build manifest regen for ${AM_TARGET}"
-            VERBATIM)
+        if(APPLE)
+            set(_dbg "${_target_bin}.dSYM")
+            add_custom_command(TARGET ${AM_TARGET} POST_BUILD
+                COMMAND dsymutil "${_target_bin}" -o "${_dbg}"
+                COMMAND ${_phase2_cmd} "--binary" "${_dbg}"
+                COMMENT "augment: post-build manifest regen for ${AM_TARGET}"
+                VERBATIM)
+        else()
+            add_custom_command(TARGET ${AM_TARGET} POST_BUILD
+                COMMAND ${_phase2_cmd}
+                COMMENT "augment: post-build manifest regen for ${AM_TARGET}"
+                VERBATIM)
+        endif()
     endif()
 
     if(AM_SEPARATE_TARGET)
