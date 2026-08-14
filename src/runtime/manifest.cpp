@@ -24,8 +24,17 @@ bool image_identity(uint64_t* guid_lo, uint64_t* guid_hi, uint32_t* age);
 }
 
 namespace augment::manifest {
+    
+int g_rva_fallback_override = -1;
+
+void set_rva_fallback_override_for_tests(bool allowed) {
+    g_rva_fallback_override = allowed ? 1 : 0;
+}
 
 bool rva_fallback_allowed() {
+    if (g_rva_fallback_override >= 0)
+        return g_rva_fallback_override == 1;
+
     static int cached = -1;
     if (cached >= 0) return cached == 1;
 

@@ -218,7 +218,9 @@ function(augment_manifest)
     endif()
 
     add_custom_target("${AM_TARGET}_augment_phase2" DEPENDS "${_agmf_out}")
-    add_dependencies("${AM_TARGET}_augment_phase2" "${AM_TARGET}")
+    if(NOT AM_SEPARATE_TARGET)
+        add_dependencies("${AM_TARGET}_augment_phase2" "${AM_TARGET}")
+    endif()
 
     if(AM_POST_BUILD AND TARGET ${AM_TARGET})
         if(_committed_ast_manifest)

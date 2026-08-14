@@ -29,6 +29,7 @@ namespace augment::manifest { Reader& global_reader() { static Reader r; return 
 namespace augment::plat {
 void* sym_resolve(const char* symbol);
 intptr_t image_slide();
+uintptr_t image_base();
 }
 
 namespace {
@@ -166,7 +167,9 @@ extern "C" AUGMENT_API int augment_global_addr(const char* name, const char** ki
         return 1;
     }
     if (!augment::manifest::rva_fallback_allowed()) return 0;
-    *addr_out = reinterpret_cast<void*>((uintptr_t)(a + static_cast<uint64_t>(augment::plat::image_slide())));
+    uintptr_t base = augment::plat::image_base();
+    if (!base) return 0;
+    *addr_out = reinterpret_cast<void*>(base + static_cast<uintptr_t>(a));
     return 1;
 }
 

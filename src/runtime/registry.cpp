@@ -47,6 +47,7 @@ namespace augment::plat {
     void* sym_resolve  (const char* symbol);
     bool self_test     (void);
     intptr_t image_slide();
+    uintptr_t image_base();
 }
 
 namespace augment::manifest {
@@ -134,8 +135,11 @@ void* Registry::resolve_target(const std::string& symbol) {
 
     uint64_t rva = manifest::global_reader().rva_of(symbol.c_str());
     if (rva && manifest::rva_fallback_allowed()) {
-        if (void* p = reinterpret_cast<void*>(static_cast<uintptr_t>(rva + plat::image_slide())))
-            return p;
+        uintptr_t base = plat::image_base();
+        if (base) {
+            if (void* p = reinterpret_cast<void*>(static_cast<uintptr_t>(base + rva)))
+                return p;
+        }
     }
 
     augment::manifest::Reader& reader = manifest::global_reader();

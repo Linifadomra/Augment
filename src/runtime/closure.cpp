@@ -30,6 +30,7 @@
 namespace augment::plat {
 void* sym_resolve(const char* symbol);
 intptr_t image_slide();
+uintptr_t image_base();
 }
 
 namespace {
@@ -225,7 +226,12 @@ static void* resolve_call_target(const char* symbol) {
     uint64_t rva = augment::manifest::global_reader().rva_of(symbol);
     if (!rva || !augment::manifest::rva_fallback_allowed())
         return nullptr;
-    return reinterpret_cast<void*>((uintptr_t)((intptr_t)rva + augment::plat::image_slide()));
+    
+    uintptr_t base = augment::plat::image_base();
+    if (!base) return nullptr;
+
+    void* addr = reinterpret_cast<void*>(base + static_cast<uintptr_t>(rva));
+    return addr;
 }
 
 extern "C" AUGMENT_API int augment_call(const char* symbol, void** args, unsigned nargs,

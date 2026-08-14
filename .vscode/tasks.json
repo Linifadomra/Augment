@@ -17,7 +17,7 @@
         "-DCMAKE_TOOLCHAIN_FILE=C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake",
         "-DAUGMENT_TESTS=ON",
         "-DVCPKG_TARGET_TRIPLET=x64-windows",
-        "-DAUGMENT_BUILD_EXAMPLES=ON",
+        "-DAUGMENT_BUILD_EXAMPLES=ON"
       ],
       "group": "build",
       "problemMatcher": []
@@ -113,7 +113,10 @@
       "label": "Build + Test All (Release)",
       "dependsOn": [
         "CMake Configure (vcpkg)",
+        "CMake Configure (Ninja for compile_commands)",
+        "Copy compile_commands from Ninja",
         "CMake Build (Release)",
+        "Generate Manifest",
         "Run CTest (Release)"
       ],
       "dependsOrder": "sequence"
@@ -122,7 +125,10 @@
       "label": "Build + Test All (RelWithDebInfo)",
       "dependsOn": [
         "CMake Configure (vcpkg)",
+        "CMake Configure (Ninja for compile_commands)",
+        "Copy compile_commands from Ninja",
         "CMake Build (RelWithDebInfo)",
+        "Generate Manifest",
         "Run CTest (RelWithDebInfo)"
       ],
       "dependsOrder": "sequence"
@@ -131,10 +137,48 @@
       "label": "Build + Test All (Debug)",
       "dependsOn": [
         "CMake Configure (vcpkg)",
+        "CMake Configure (Ninja for compile_commands)",
+        "Copy compile_commands from Ninja",
         "CMake Build (Debug)",
+        "Generate Manifest",
         "Run CTest (Debug)"
       ],
       "dependsOrder": "sequence"
+    },
+    {
+      "label": "CMake Configure (Ninja for compile_commands)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-B",
+        "build_ninja",
+        "-S",
+        ".",
+        "-G",
+        "Ninja",
+        "-DCMAKE_TOOLCHAIN_FILE=C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake",
+        "-DAUGMENT_TESTS=ON",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DAUGMENT_BUILD_EXAMPLES=ON",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Copy compile_commands from Ninja",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "if (Test-Path \"${workspaceFolder}\\build_ninja\\compile_commands.json\") { Copy-Item -Path \"${workspaceFolder}\\build_ninja\\compile_commands.json\" -Destination \"${workspaceFolder}\\build\\compile_commands.json\" -Force; exit $LASTEXITCODE } else { Write-Error 'compile_commands.json not found'; exit 1 }"
+      ],
+      "dependsOn": "CMake Configure (Ninja for compile_commands)",
+      "dependsOrder": "sequence",
+      "group": "build",
+      "problemMatcher": []
     },
     {
       "label": "Generate Manifest",
@@ -148,7 +192,11 @@
         "--config",
         "Debug"
       ],
-      "dependsOn": "CMake Configure (vcpkg)",
+      "dependsOn": [
+        "CMake Configure (vcpkg)",
+        "Copy compile_commands from Ninja"
+      ],
+      "dependsOrder": "sequence",
       "group": "build",
       "problemMatcher": []
     },
@@ -174,122 +222,6 @@
         "${workspaceFolder}"
       ],
       "dependsOn": "Generate Manifest",
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "CMake Configure (Ninja for compile_commands)",
-      "type": "shell",
-      "command": "cmake",
-      "args": [
-        "-B",
-        "build_ninja",
-        "-S",
-        ".",
-        "-G",
-        "Ninja",
-        "-DCMAKE_TOOLCHAIN_FILE=C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake",
-        "-DAUGMENT_BUILD_EXAMPLES=ON",
-        "-DCMAKE_BUILD_TYPE=Debug",
-        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-      ],
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "Copy compile_commands from Ninja",
-      "type": "shell",
-      "command": "powershell",
-      "args": [
-        "-NoProfile",
-        "-Command",
-        "if (Test-Path \"${workspaceFolder}\\build_ninja\\compile_commands.json\") { Copy-Item -Path \"${workspaceFolder}\\build_ninja\\compile_commands.json\" -Destination \"${workspaceFolder}\\build\\compile_commands.json\" -Force; exit $LASTEXITCODE } else { Write-Error 'compile_commands.json not found'; exit 1 }"
-      ],
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "Generate Manifest (VS with compile_commands from Ninja)",
-      "type": "shell",
-      "command": "cmake",
-      "args": [
-        "--build",
-        "build",
-        "--target",
-        "gen_manifest",
-        "--config",
-        "Debug"
-      ],
-      "dependsOn": [
-        "CMake Configure (vcpkg)",
-        "CMake Configure (Ninja for compile_commands)",
-        "Copy compile_commands from Ninja"
-      ],
-      "dependsOrder": "sequence",
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "Run Extractor (with compile_commands)",
-      "type": "shell",
-      "command": "python",
-      "args": [
-        "-m",
-        "extractor.extract",
-        "--verbose",
-        "--log-file",
-        "ext.log",
-        "--compile-commands",
-        "${workspaceFolder}\\build\\compile_commands.json",
-        "--binary",
-        "${workspaceFolder}\\build\\augment.pdb",
-        "--output",
-        "${workspaceFolder}\\build\\augment.bin",
-        "--debug-format",
-        "pdb",
-        "--project-root",
-        "${workspaceFolder}"
-      ],
-      "dependsOn": "Generate Manifest (VS with compile_commands from Ninja)",
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "Generate Manifest (VS only)",
-      "type": "shell",
-      "command": "cmake",
-      "args": [
-        "--build",
-        "build",
-        "--target",
-        "gen_manifest",
-        "--config",
-        "Debug"
-      ],
-      "dependsOn": "CMake Configure (vcpkg)",
-      "group": "build",
-      "problemMatcher": []
-    },
-    {
-      "label": "Run Extractor (VS only, no compile_commands)",
-      "type": "shell",
-      "command": "python",
-      "args": [
-        "-m",
-        "extractor.extract",
-        "--verbose",
-        "--log-file",
-        "ext.log",
-        "--binary",
-        "${workspaceFolder}\\build\\augment.pdb",
-        "--output",
-        "${workspaceFolder}\\build\\augment.bin",
-        "--debug-format",
-        "pdb",
-        "--project-root",
-        "${workspaceFolder}"
-      ],
-      "dependsOn": "Generate Manifest (VS only)",
       "group": "build",
       "problemMatcher": []
     },

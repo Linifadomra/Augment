@@ -177,6 +177,11 @@ void* sym_resolve(const char* symbol) {
 
 intptr_t image_slide() { return _dyld_get_image_vmaddr_slide(0); }
 
+uintptr_t image_base() {
+    const image_syms& img = image();
+    return img.ok ? static_cast<uintptr_t>(img.slide) : 0;
+}
+
 uint64_t func_gap(void* target) {
     const image_syms& img = image();
     if (!img.ok) return UINT64_MAX;
@@ -292,6 +297,11 @@ void* sym_resolve(const char* symbol) {
 
 intptr_t image_slide() {
     return static_cast<intptr_t>(load_bias());
+}
+
+uintptr_t image_base() {
+    const image_syms& img = image();
+    return img.ok ? static_cast<uintptr_t>(img.bias) : 0;
 }
 
 bool image_identity(uint64_t* guid_lo, uint64_t* guid_hi, uint32_t* age) {
@@ -431,6 +441,10 @@ intptr_t image_slide() {
     auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
     if (nt->Signature != IMAGE_NT_SIGNATURE) return 0;
     return reinterpret_cast<intptr_t>(base) - static_cast<intptr_t>(nt->OptionalHeader.ImageBase);
+}
+
+uintptr_t image_base() {
+    return reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
 }
 
 bool image_identity(uint64_t* guid_lo, uint64_t* guid_hi, uint32_t* age) {

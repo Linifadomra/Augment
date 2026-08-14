@@ -2,13 +2,15 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <cstdio>
 
 using namespace augment::manifest;
 
 int main() {
     Reader r;
     assert(r.load("fixtures/sample.manifest"));
-    assert(r.version() == 2);
+    assert(r.version() == 3);
 
     assert(r.func_count("daCow_c_Execute") == 1);
     FuncView f{};
