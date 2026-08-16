@@ -4,6 +4,11 @@ if(NOT DEFINED AUGMENT_EXTRACT_SCRIPT)
         CACHE FILEPATH "Path to extract.py")
 endif()
 
+set(_augment_uses_pdb FALSE)
+if(WIN32 AND (MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+    set(_augment_uses_pdb TRUE)
+endif()
+
 function(augment_manifest)
     cmake_parse_arguments(AM "SEPARATE_TARGET;REGENERATE_AST;POST_BUILD"
         "TARGET;OUTPUT;BINARY;BINARY_STAMP;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT;PCH_OUT;AST_MANIFEST_HINT_DIR"
@@ -57,7 +62,7 @@ function(augment_manifest)
     message(STATUS "CMAKE_LINKER=${CMAKE_LINKER}")
     message(STATUS "CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}")
 
-    if(WIN32 AND (MSVC OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+    if(_augment_uses_pdb)
         set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
         set(_fmt_arg "--debug-format" "pdb")
     else()
@@ -69,7 +74,7 @@ function(augment_manifest)
         get_target_property(_target_imported ${AM_TARGET} IMPORTED)
 
         if(NOT _target_imported)
-            if(WIN32 AND MSVC)
+            if(_augment_uses_pdb)
                 target_compile_options(${AM_TARGET} PRIVATE
                     $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:/Zi>
                 )
