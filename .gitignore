@@ -102,3 +102,4 @@ coverage.xml
 # Exceptions
 !libffi-8.dll
 !libffi-8.lib
+/build_clang

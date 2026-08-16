@@ -48,7 +48,7 @@ function(augment_manifest)
         set(_target_bin $<TARGET_FILE:${AM_TARGET}>)
     endif()
 
-    if(WIN32 AND MSVC)
+    if(WIN32 AND (MSVC OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
         set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
         set(_fmt_arg "--debug-format" "pdb")
     else()

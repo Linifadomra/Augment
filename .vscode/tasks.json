@@ -232,6 +232,63 @@
         "Run Extractor"
       ],
       "dependsOrder": "sequence"
+    },
+    {
+      "label": "CMake Configure (Clang)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-B",
+        "build_clang",
+        "-S",
+        ".",
+        "-G",
+        "Ninja",
+        "-DCMAKE_C_COMPILER=clang",
+        "-DCMAKE_CXX_COMPILER=clang++",
+        "-DCMAKE_TOOLCHAIN_FILE=C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DAUGMENT_TESTS=ON",
+        "-DAUGMENT_BUILD_EXAMPLES=ON",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "CMake Build (Clang Debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "build_clang"
+      ],
+      "group": "build",
+      "dependsOn": "CMake Configure (Clang)",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run CTest (Clang)",
+      "type": "shell",
+      "command": "ctest",
+      "args": [
+        "--test-dir",
+        "build_clang",
+        "--output-on-failure"
+      ],
+      "dependsOn": "CMake Build (Clang Debug)",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build + Test All (Clang)",
+      "dependsOn": [
+        "CMake Configure (Clang)",
+        "CMake Build (Clang Debug)",
+        "Run CTest (Clang)"
+      ],
+      "dependsOrder": "sequence"
     }
   ]
 }
