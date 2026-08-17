@@ -353,12 +353,30 @@ image_syms load_image() {
 
     SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
 
-    if (!SymInitialize(process, nullptr, TRUE))
+    if (!SymInitialize(process, nullptr, FALSE))
         return out;
 
     out.process = process;
     out.base    = reinterpret_cast<ULONG64>(GetModuleHandleW(nullptr));
-    out.ok      = true;
+
+    char modulePath[MAX_PATH];
+    if (GetModuleFileNameA(reinterpret_cast<HMODULE>(out.base), modulePath, sizeof(modulePath))) {
+        DWORD64 loadedBase = SymLoadModuleEx(
+            process,
+            nullptr,      // hFile
+            modulePath,   // ImageName
+            nullptr,      // ModuleName
+            out.base,     // Force DbgHelp to relocate symbols to this base
+            0,            // DllSize (0 = auto)
+            nullptr,      // Data
+            0             // Flags
+        );
+
+        if (loadedBase) {
+            out.ok = true;
+        }
+    }
+
     return out;
 }
 

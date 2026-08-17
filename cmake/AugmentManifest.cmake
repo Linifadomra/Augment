@@ -4,8 +4,13 @@ if(NOT DEFINED AUGMENT_EXTRACT_SCRIPT)
         CACHE FILEPATH "Path to extract.py")
 endif()
 
+set(_augment_is_msvc_frontend FALSE)
+if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    set(_augment_is_msvc_frontend TRUE)
+endif()
+
 set(_augment_uses_pdb FALSE)
-if(WIN32 AND (MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"))
+if(_augment_is_msvc_frontend OR (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
     set(_augment_uses_pdb TRUE)
 endif()
 
@@ -63,7 +68,11 @@ function(augment_manifest)
     message(STATUS "CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}")
 
     if(_augment_uses_pdb)
-        set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
+        if(_augment_is_msvc_frontend)
+            set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
+        else()
+            set(_extract_src "$<TARGET_FILE_DIR:${AM_TARGET}>/$<TARGET_FILE_BASE_NAME:${AM_TARGET}>.pdb")
+        endif()
         set(_fmt_arg "--debug-format" "pdb")
     else()
         set(_extract_src "${_target_bin}")
@@ -74,7 +83,7 @@ function(augment_manifest)
         get_target_property(_target_imported ${AM_TARGET} IMPORTED)
 
         if(NOT _target_imported)
-            if(_augment_uses_pdb)
+            if(_augment_is_msvc_frontend)
                 target_compile_options(${AM_TARGET} PRIVATE
                     $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:/Zi>
                 )
