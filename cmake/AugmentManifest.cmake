@@ -4,23 +4,11 @@ if(NOT DEFINED AUGMENT_EXTRACT_SCRIPT)
         CACHE FILEPATH "Path to extract.py")
 endif()
 
-set(_augment_is_msvc_frontend FALSE)
-if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-    set(_augment_is_msvc_frontend TRUE)
-endif()
-
-set(_augment_uses_pdb FALSE)
-if(WIN32)
-    if(_augment_is_msvc_frontend OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        set(_augment_uses_pdb TRUE)
-    endif()
-endif()
-
 function(augment_manifest)
     cmake_parse_arguments(AM "SEPARATE_TARGET;REGENERATE_AST;POST_BUILD"
         "TARGET;OUTPUT;BINARY;BINARY_STAMP;COMPILE_COMMANDS;PROJECT_ROOT;REGISTRY_OUT;PCH_OUT;AST_MANIFEST_HINT_DIR"
         "EXCLUDE;EXCLUDE_PREFIX;EXCLUDE_PATH"
-        ${ARGN})
+        `${ARGN}`)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
     if(NOT AM_TARGET OR NOT AM_OUTPUT)
@@ -33,6 +21,18 @@ function(augment_manifest)
 
     if(NOT AM_PROJECT_ROOT)
         set(AM_PROJECT_ROOT "${CMAKE_SOURCE_DIR}")
+    endif()
+
+    set(_augment_is_msvc_frontend FALSE)
+    if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        set(_augment_is_msvc_frontend TRUE)
+    endif()
+
+    set(_augment_uses_pdb FALSE)
+    if(WIN32)
+        if(_augment_is_msvc_frontend OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            set(_augment_uses_pdb TRUE)
+        endif()
     endif()
 
     set(_excl_args "")
@@ -68,6 +68,7 @@ function(augment_manifest)
     message(STATUS "CMAKE_CXX_COMPILER_FRONTEND_VARIANT=${CMAKE_CXX_COMPILER_FRONTEND_VARIANT}")
     message(STATUS "CMAKE_LINKER=${CMAKE_LINKER}")
     message(STATUS "CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}")
+    message(STATUS "_augment_uses_pdb=${_augment_uses_pdb}")
 
     if(_augment_uses_pdb)
         if(_augment_is_msvc_frontend)
