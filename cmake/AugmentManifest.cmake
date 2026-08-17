@@ -94,7 +94,7 @@ function(augment_manifest)
                     -gcodeview
                 )
                 target_link_options(${AM_TARGET} PRIVATE
-                    -Wl,--codeview
+                    -Wl,-pdb=
                 )
             else()
                 target_compile_options(${AM_TARGET} PRIVATE
