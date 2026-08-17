@@ -42,6 +42,7 @@
 **/*build/
 **/*Build/
 **/*build-*/
+**/*build_*/
 
 # CMake generated files
 CMakeFiles/
@@ -97,9 +98,7 @@ coverage.xml
 # mypy / type checkers
 .mypy_cache/
 .ruff_cache/
-/build_ninja
 
 # Exceptions
 !libffi-8.dll
 !libffi-8.lib
-/build_clang
