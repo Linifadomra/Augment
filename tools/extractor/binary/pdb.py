@@ -234,8 +234,8 @@ def _parse_pdbutil_int(s: str) -> int:
 def _resolve_rva(seg_str: str, off_str: str, section_map: Dict[int, int]) -> Optional[int]:
     """Convert a seg:off pair to an integer RVA, or None if unresolvable."""
     try:
-        seg = int(seg_str, 16)
-        off = int(off_str, 16)
+        seg = _parse_pdbutil_int(seg_str)
+        off = _parse_pdbutil_int(off_str)
     except (ValueError, TypeError):
         return None
     if seg == 0:
