@@ -10,8 +10,10 @@ if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
 endif()
 
 set(_augment_uses_pdb FALSE)
-if(_augment_is_msvc_frontend OR (WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
-    set(_augment_uses_pdb TRUE)
+if(WIN32)
+    if(_augment_is_msvc_frontend OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(_augment_uses_pdb TRUE)
+    endif()
 endif()
 
 function(augment_manifest)
@@ -86,6 +88,13 @@ function(augment_manifest)
             if(_augment_is_msvc_frontend)
                 target_compile_options(${AM_TARGET} PRIVATE
                     $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:/Zi>
+                )
+            elseif(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+                target_compile_options(${AM_TARGET} PRIVATE
+                    -gcodeview
+                )
+                target_link_options(${AM_TARGET} PRIVATE
+                    -Wl,--codeview
                 )
             else()
                 target_compile_options(${AM_TARGET} PRIVATE
