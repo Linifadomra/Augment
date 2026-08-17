@@ -74,6 +74,7 @@ private:
 Reader& global_reader();
 
 bool rva_fallback_allowed();
+void set_rva_fallback_override_for_tests(bool allow);
 
 } // namespace augment::manifest
 

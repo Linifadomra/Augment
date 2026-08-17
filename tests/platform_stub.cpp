@@ -10,4 +10,5 @@ namespace augment::plat {
     bool  hook_remove(void*) { return true; }
     void* sym_resolve(const char*) { return reinterpret_cast<void*>(0x1); }
     intptr_t image_slide() { return 0; }
+    uintptr_t image_base() { return 0; }
 }

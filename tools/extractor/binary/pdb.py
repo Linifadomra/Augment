@@ -42,7 +42,7 @@ _SYM_REC_RE = re.compile(
     r'^\s*(?:\d+|0x[0-9a-fA-F]+)\s*\|\s*'
     r'(S_[A-Z0-9_]+)'
     r'(?:\s+\[size\s*=\s*\d+\])?'
-    r'(?:\s+`([^`]+)`)?'
+    r'\s*(.*)'
 )
 # Matches the addr continuation line, e.g.:
 #   addr = 0001:00001080
@@ -258,7 +258,9 @@ def _parse_function_rvas(text: str, section_map: Dict[int, int]) -> Dict[str, in
     for line in text.splitlines():
         m = _SYM_REC_RE.match(line)
         if m:
-            kind, name = m.group(1), m.group(2) or ""
+            kind = m.group(1)
+            raw_name = m.group(2)
+            name = raw_name.strip(" `\r\n") if raw_name else ""
             if kind in _PROC_KINDS:
                 current_name = name if name else None
             else:

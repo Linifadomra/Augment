@@ -23,6 +23,18 @@ function(augment_manifest)
         set(AM_PROJECT_ROOT "${CMAKE_SOURCE_DIR}")
     endif()
 
+    set(_augment_is_msvc_frontend FALSE)
+    if(MSVC OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        set(_augment_is_msvc_frontend TRUE)
+    endif()
+
+    set(_augment_uses_pdb FALSE)
+    if(WIN32)
+        if(_augment_is_msvc_frontend OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            set(_augment_uses_pdb TRUE)
+        endif()
+    endif()
+
     set(_excl_args "")
     if(AM_EXCLUDE)
         set(_excl_file "${CMAKE_CURRENT_BINARY_DIR}/${AM_TARGET}_exclude.txt")
@@ -48,8 +60,22 @@ function(augment_manifest)
         set(_target_bin $<TARGET_FILE:${AM_TARGET}>)
     endif()
 
-    if(WIN32 AND MSVC)
-        set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
+    message(STATUS "Augment toolchain")
+    message(STATUS "WIN32=${WIN32}")
+    message(STATUS "MSVC=${MSVC}")
+    message(STATUS "CMAKE_CXX_COMPILER_ID=${CMAKE_CXX_COMPILER_ID}")
+    message(STATUS "CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}")
+    message(STATUS "CMAKE_CXX_COMPILER_FRONTEND_VARIANT=${CMAKE_CXX_COMPILER_FRONTEND_VARIANT}")
+    message(STATUS "CMAKE_LINKER=${CMAKE_LINKER}")
+    message(STATUS "CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}")
+    message(STATUS "_augment_uses_pdb=${_augment_uses_pdb}")
+
+    if(_augment_uses_pdb)
+        if(_augment_is_msvc_frontend)
+            set(_extract_src "$<TARGET_PDB_FILE:${AM_TARGET}>")
+        else()
+            set(_extract_src "$<TARGET_FILE_DIR:${AM_TARGET}>/$<TARGET_FILE_BASE_NAME:${AM_TARGET}>.pdb")
+        endif()
         set(_fmt_arg "--debug-format" "pdb")
     else()
         set(_extract_src "${_target_bin}")
@@ -60,9 +86,16 @@ function(augment_manifest)
         get_target_property(_target_imported ${AM_TARGET} IMPORTED)
 
         if(NOT _target_imported)
-            if(WIN32 AND MSVC)
+            if(_augment_is_msvc_frontend)
                 target_compile_options(${AM_TARGET} PRIVATE
                     $<$<NOT:$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Debug>>>:/Zi>
+                )
+            elseif(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+                target_compile_options(${AM_TARGET} PRIVATE
+                    -gcodeview
+                )
+                target_link_options(${AM_TARGET} PRIVATE
+                    -Wl,-pdb=
                 )
             else()
                 target_compile_options(${AM_TARGET} PRIVATE
@@ -218,7 +251,9 @@ function(augment_manifest)
     endif()
 
     add_custom_target("${AM_TARGET}_augment_phase2" DEPENDS "${_agmf_out}")
-    add_dependencies("${AM_TARGET}_augment_phase2" "${AM_TARGET}")
+    if(NOT AM_SEPARATE_TARGET)
+        add_dependencies("${AM_TARGET}_augment_phase2" "${AM_TARGET}")
+    endif()
 
     if(AM_POST_BUILD AND TARGET ${AM_TARGET})
         if(_committed_ast_manifest)

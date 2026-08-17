@@ -124,9 +124,11 @@ function(augment_generate_exclusions)
         VERBATIM
     )
 
-    add_custom_target(${AGE_TARGET}_augment_exclusions
-        DEPENDS "${_out_header}"
-    )
+    if(NOT TARGET ${AGE_TARGET}_augment_exclusions)
+        add_custom_target(${AGE_TARGET}_augment_exclusions
+            DEPENDS "${_out_header}"
+        )
+    endif()
 
     add_dependencies(${AGE_TARGET} ${AGE_TARGET}_augment_exclusions)
     target_include_directories(${AGE_TARGET} PRIVATE "${_out_dir}")

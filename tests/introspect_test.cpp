@@ -1,9 +1,15 @@
 #include "augment/augment.hpp"
+#include "augment/manifest_internal.hpp"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 
+namespace augment::plat {
+uintptr_t image_base();
+}
+
 int main() {
+    augment::manifest::set_rva_fallback_override_for_tests(true);
     int n = augment_manifest_load("fixtures/sample.manifest");
     assert(n == 5);
 
@@ -37,7 +43,11 @@ int main() {
 
     const char* gkind = nullptr; void* gaddr = nullptr;
     assert(augment_global_addr("g_dComIfG", &gkind, &gaddr));
-    assert((uintptr_t)gaddr == 0x804000);
+    assert(std::strcmp(gkind, "ptr") == 0);
+
+    uintptr_t base = augment::plat::image_base();
+    assert(base != 0);
+    assert(reinterpret_cast<uintptr_t>(gaddr) == base + 0x804000);
 
     assert(std::strcmp(augment_fn_self_view("_ZN7daCow_c7ExecuteEv"), "daCow_c") == 0);
     assert(std::strcmp(augment_fn_self_view("_Z8setStageP7daCph_ci"), "") == 0);
