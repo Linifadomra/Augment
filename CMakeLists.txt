@@ -20,7 +20,7 @@ set(DOBBY_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(DOBBY_BUILD_STATIC ON CACHE BOOL "" FORCE)
 
 if(WIN32)
-    find_package(minhook CONFIG REQUIRED)
+    add_subdirectory(vendor/minhook)
 else() 
     add_subdirectory(vendor/dobby)
 endif()
@@ -67,7 +67,7 @@ target_include_directories(augment
 )
 
 if(WIN32)
-    target_link_libraries(augment PRIVATE minhook::minhook)
+    target_link_libraries(augment PRIVATE minhook)
 else()
     target_link_libraries(augment PUBLIC dobby)
 endif()
