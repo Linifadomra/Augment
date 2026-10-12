@@ -20,7 +20,16 @@ set(DOBBY_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(DOBBY_BUILD_STATIC ON CACHE BOOL "" FORCE)
 
 if(WIN32)
-    find_package(minhook CONFIG REQUIRED)
+    if(NOT TARGET minhook::minhook AND NOT TARGET minhook)
+        find_package(minhook CONFIG QUIET)
+    endif()
+
+    if(NOT TARGET minhook::minhook AND NOT TARGET minhook)
+        message(FATAL_ERROR
+            "minhook target not found. either vendor it via FetchContent in the consumer "
+            "project, or install it so find_package can locate it."
+        )
+    endif()
 else() 
     add_subdirectory(vendor/dobby)
 endif()
