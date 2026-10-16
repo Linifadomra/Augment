@@ -15,22 +15,6 @@
 #include <mutex>
 #include <cstdio>
 
-static AugmentLogFn s_logger = nullptr;
-
-void augment_set_logger(AugmentLogFn fn) {
-    s_logger = fn;
-}
-
-void augment_log(const char* tag, const char* fmt, ...) {
-    char buf[512];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    if (s_logger) s_logger(tag, buf);
-    else fprintf(stderr, "[%s] %s\n", tag, buf);
-}
-
 namespace augment::plat {
     bool hook_install  (void* target, void* replacement, void** out_original);
     bool hook_remove   (void* target);
@@ -43,6 +27,33 @@ namespace augment::plat {
 namespace augment::manifest {
     class Reader;
     Reader& global_reader();
+}
+
+namespace {
+AugmentLogFn logger = nullptr;
+std::mutex ptr_mutex;
+std::unordered_map<void*, void*> ptr_hooks;
+
+void unhook_all_ptr() {
+    std::lock_guard g(ptr_mutex);
+    for (auto& [target, orig] : ptr_hooks)
+        augment::plat::hook_remove(target);
+    ptr_hooks.clear();
+}
+}
+
+void augment_set_logger(AugmentLogFn fn) {
+    logger = fn;
+}
+
+void augment_log(const char* tag, const char* fmt, ...) {
+    char buf[512];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    if (logger) logger(tag, buf);
+    else fprintf(stderr, "[%s] %s\n", tag, buf);
 }
 
 namespace augment {
@@ -210,6 +221,7 @@ void Registry::install_all() {
 }
 
 void Registry::clear() {
+    unhook_all_ptr();
     std::unique_lock lock(m_mutex);
     for (auto& [symbol, chain] : m_chains) {
         if (chain.installed) {
@@ -309,6 +321,35 @@ void augment_register_ptr(const char* symbol, void* ptr) {
 
 void augment_unregister(const char* augment_id) {
     augment::Registry::instance().unregister_augment(augment_id);
+}
+
+int augment_hook_ptr(void* target, void* replacement, void** out_original) {
+    if (!target || !replacement) return 0;
+
+    std::lock_guard g(ptr_mutex);
+    if (ptr_hooks.count(target)) {
+        augment_log("augment", "ptr %p already hooked", target);
+        return 0;
+    }
+
+    void* orig = nullptr;
+    if (!plat::hook_install(target, replacement, &orig)) {
+        augment_log("augment", "hook_install failed for ptr %p", target);
+        return 0;
+    }
+
+    ptr_hooks[target] = orig;
+    if (out_original) *out_original = orig;
+    return 1;
+}
+
+int augment_unhook_ptr(void* target) {
+    std::lock_guard g(ptr_mutex);
+    auto it = ptr_hooks.find(target);
+    if (it == ptr_hooks.end()) return 0;
+    plat::hook_remove(target);
+    ptr_hooks.erase(it);
+    return 1;
 }
 
 void augment_install_all(void) {

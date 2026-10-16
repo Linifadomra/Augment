@@ -34,6 +34,10 @@ add_executable(mixin_selftest mixin_selftest.cpp)
 target_link_libraries(mixin_selftest PRIVATE augment::augment)
 add_test(NAME mixin COMMAND mixin_selftest)
 
+add_executable(pointer_hook_test pointer_hook_test.cpp)
+target_link_libraries(pointer_hook_test PRIVATE augment::augment)
+add_test(NAME ptr_test COMMAND pointer_hook_test)
+
 if(AUGMENT_FFI)
     add_executable(closure_selftest closure_selftest.cpp)
     target_link_libraries(closure_selftest PRIVATE augment::augment ffi)

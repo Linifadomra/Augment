@@ -164,7 +164,19 @@ AUGMENT_API int augment_instance_count(const char* class_name);
 
 /* API */
 
+/**
+ * @brief Signature for a log callback.
+ *
+ * @param tag Tag passed to the log function (for disambiguation).
+ * @param msg Formatted message passed to the log function.
+ */
 using AugmentLogFn = void(*)(const char* tag, const char* msg);
+
+/**
+ * @brief Sets the log function called instead of fprintf.
+ *
+ * @param fn The AugmentLogFn to be called.
+ */
 AUGMENT_API void augment_set_logger(AugmentLogFn fn);
 
 AUGMENT_API void augment_invoke(const char* symbol, AugmentCtx* ctx);
@@ -182,6 +194,20 @@ AUGMENT_API void augment_register_ptr(
     const char* symbol,
     void*       target_ptr
 );
+
+/**
+ * @brief Hooks a function by address, bypassing symbol/manifest resolution
+ *        and the chain/phase system entirely.
+ *
+ * @param target       Address of the function to hook.
+ * @param replacement  Function to run instead of @p target.
+ * @param out_original Receives a callable trampoline to the original (nullable).
+ * @return 1 on success, 0 on failure (null args, already hooked, or backend failure).
+ */
+AUGMENT_API int augment_hook_ptr(void* target, void* replacement, void** out_original);
+
+/** @brief Removes a hook installed by augment_hook_ptr. Returns 1 if removed. */
+AUGMENT_API int augment_unhook_ptr(void* target);
 
 AUGMENT_API void augment_unregister(const char* augment_id);
 AUGMENT_API void augment_install_all(void);
