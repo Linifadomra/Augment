@@ -119,6 +119,7 @@ ctest --test-dir build --output-on-failure
 
 | Platform | Compiler | Hook Backend | Status |
 |---|---|---|---|
-| Windows x64 | MSVC / Clang-cl | Dobby | Supported |
+| Windows x64 + x86 | MSVC / Clang-cl | MinHook | Supported |
 | Linux x64 | GCC / Clang | Dobby | Supported |
+| Linux x86 | GCC / Clang | Dobby | Unsupported |
 | macOS x64 / ARM64 | Apple Clang | Dobby | Supported |
