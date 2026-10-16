@@ -1,6 +1,6 @@
 #include "augment/augment.hpp"
 #include "augment_generated/augment_ctx.hpp"
-#include "vanilla/game.hpp"
+#include "game/vanilla/game.hpp"
 #include <stdio.h>
 
 // -- Patch: damage_boost --
