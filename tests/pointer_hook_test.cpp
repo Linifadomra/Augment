@@ -38,4 +38,7 @@ int main() {
     augment_hook_ptr(reinterpret_cast<void*>(&eatFood), reinterpret_cast<void*>(&hook_eat_food), nullptr);
     eatFood(person, 50.0f);
     assert(person.satiety == 150.0f && "Hooked function does not behave correctly: (expected 150.0f)");
+    augment_unhook_ptr(reinterpret_cast<void*>(&eatFood));
+    eatFood(person, 50.0f);
+    assert(person.satiety == 200.0f && "Unhook does not behave correctly: (expected 200.0f)");
 }
