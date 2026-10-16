@@ -4,6 +4,7 @@ PROJECT_NAME = "Augment"
 INPUT = README.md include/ docs/BUILDING.md
 RECURSIVE = YES
 FILE_PATTERNS = *.hpp *.md
+EXCLUDE = include/augment/manifest_internal.hpp  include/augment/augment_export.hpp include/augment/platform_compat.hpp  
 
 # Documentation extraction
 USE_MDFILE_AS_MAINPAGE = README.md
@@ -17,7 +18,8 @@ INTERNAL_DOCS = NO
 ENABLE_PREPROCESSING = YES
 MACRO_EXPANSION = YES
 EXPAND_ONLY_PREDEF = YES
-PREDEFINED = AUGMENT_FFI=1
+PREDEFINED = AUGMENT_FFI=1 \
+             AUGMENT_API=
 
 # Output
 GENERATE_HTML = YES

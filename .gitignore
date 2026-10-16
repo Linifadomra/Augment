@@ -89,6 +89,7 @@ env/
 dist/
 build/
 *.egg
+*html*/
 
 # Coverage
 .coverage

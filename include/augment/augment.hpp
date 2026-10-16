@@ -1,3 +1,7 @@
+/** @file augment.hpp
+ *  @brief Public C API for registering and managing hooks.
+ */
+
 // Augment Copyright (C) 2026 Liam
 //
 // Licensed under the MIT License.
