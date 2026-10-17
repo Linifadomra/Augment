@@ -85,7 +85,7 @@ class Function:
     flat: str                           # demangled, namespace-flattened name
     mangled: str                        # raw mangled symbol
     member: bool                        # is a non-static member function
-    ret: str                            # ffi kind string for return type
+    ret: str                            # ffi kind, or a resolved pointer spelling such as "Entity*"
     args: List[Arg] = field(default_factory=list)
     self_view: Optional[str] = None     # owning struct name when member == True
     rva: Optional[str] = None           # hex string e.g. "0x1a2b3c", or None
