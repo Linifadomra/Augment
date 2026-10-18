@@ -113,6 +113,7 @@ def merge(
     rva_map: Dict[str, int],
     exclude_prefixes: tuple[str, ...] = (),
     exclude_substrs: tuple[str, ...] = (),
+    pdb_signatures: Optional[Dict[str, Dict]] = None,
 ) -> Dict[str, List[dict]]:
     rva_keys = list(rva_map.keys())
     ast_fns = ast.get("functions", [])
@@ -122,7 +123,8 @@ def merge(
     global_dm_cache = _demangle_batch(all_mangled_strings)
 
     functions = _merge_functions(ast_fns, rva_map, global_dm_cache,
-                                 exclude_prefixes, exclude_substrs)
+                                 exclude_prefixes, exclude_substrs,
+                                 pdb_signatures)
     _apply_flat_names(functions, global_dm_cache, exclude_prefixes, exclude_substrs)
 
     structs   = sorted(ast.get("structs",   []), key=lambda s: s["name"])
@@ -235,6 +237,7 @@ def _merge_functions(
     dm_cache: Dict[str, str],
     exclude_prefixes: tuple,
     exclude_substrs: tuple,
+    pdb_signatures: Optional[Dict[str, Dict]] = None,
 ) -> List[dict]:
     out: List[dict] = []
     consumed_rva_keys: set = set()
@@ -260,6 +263,17 @@ def _merge_functions(
                 clean_rva_lookup.setdefault(dm_norm, []).append(entry)
         except Exception:
             pass
+
+    signatures_by_rva = {
+        signature["rva"]: signature
+        for signature in (pdb_signatures or {}).values()
+        if isinstance(signature.get("rva"), int)
+    }
+
+    def signature_for(symbol: Optional[str], rva: Optional[int]) -> Optional[Dict]:
+        if pdb_signatures and symbol in pdb_signatures:
+            return pdb_signatures[symbol]
+        return signatures_by_rva.get(rva)
 
     for fn in ast_fns:
         if _is_generated_artifact(fn):
@@ -312,6 +326,9 @@ def _merge_functions(
             record["args"] = args
 
         record["rva"] = _rva_hex(rva_int) if rva_int is not None else None
+        _apply_pdb_signature(
+            record, signature_for(used_key or mangled, rva_int), preserve_ast=True
+        )
 
         if used_key:
             if _is_mangled(used_key):
@@ -361,11 +378,35 @@ def _merge_functions(
                         break
             if not chosen:
                 continue
-            out.append(_opaque_stub(chosen, rva_int))
+            record = _opaque_stub(chosen, rva_int)
+            _apply_pdb_signature(
+                record, signature_for(chosen, rva_int), preserve_ast=False
+            )
+            out.append(record)
     except Exception:
         pass
 
     return out
+
+
+def _apply_pdb_signature(record: dict, signature: Optional[Dict],
+                         preserve_ast: bool) -> None:
+    if not signature:
+        return
+    pdb_ret = signature.get("ret")
+    if record.get("ret") in (None, "", "ptr") and pdb_ret and pdb_ret != "ptr":
+        record["ret"] = pdb_ret
+    pdb_args = signature.get("args")
+    if not record.get("args") and pdb_args:
+        record["args"] = [dict(arg) for arg in pdb_args]
+    pdb_self_view = signature.get("self_view")
+    if preserve_ast:
+        if (record.get("member") or "member" not in record) \
+                and not record.get("self_view") and pdb_self_view:
+            record["self_view"] = pdb_self_view
+    else:
+        record["member"] = bool(signature.get("member"))
+        record["self_view"] = pdb_self_view
 
 
 def _opaque_stub(mangled: str, rva_int: int) -> dict:

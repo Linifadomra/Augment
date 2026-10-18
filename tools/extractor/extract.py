@@ -27,6 +27,8 @@ python -m extractor.extract phase2 \\
     --ast-manifest build/ast_manifest.json \\
     --binary       build/game.elf \\
     --output       build/augment.bin
+
+# Add --pdb-signatures --debug-format pdb to extract signatures from a PDB.
 """
 from __future__ import annotations
 
@@ -310,6 +312,13 @@ def _collect_struct_views(manifest: Dict) -> set[str]:
         self_view = (fn.get("self_view") or "").strip()
         if self_view:
             views.add(self_view)
+        ret = (fn.get("ret") or "").strip()
+        if ret.startswith("struct:"):
+            views.add(ret[len("struct:"):].strip())
+        elif ret.endswith("*"):
+            pointee = ret[:-1].strip().removeprefix("const ").strip()
+            if pointee:
+                views.add(pointee)
         for arg in fn.get("args") or []:
             view = (arg.get("view") or "").strip()
             if view:
@@ -362,7 +371,8 @@ def phase2(
     verbose: bool = False,
     exclude_prefixes: tuple[str, ...] = (),
     exclude_substrs: tuple[str, ...] = (),
-    exclude_paths: tuple[str, ...] = ()
+    exclude_paths: tuple[str, ...] = (),
+    pdb_signatures: bool = False,
 ) -> Dict:
     """
     Load the ast_manifest.json produced by phase1, extract RVAs from the
@@ -385,12 +395,22 @@ def phase2(
 
     log.info("extracting RVAs from %s", binary_path)
     backend = _select_backend(binary_path, debug_format)
+    signatures = None
+    if pdb_signatures:
+        if backend.name != "pdb":
+            sys.exit(
+                "[extract] --pdb-signatures requires --debug-format pdb "
+                "(or a .pdb input when the format is inferred)"
+            )
+        signatures = backend.extract_function_signatures(binary_path)
+        log.info("got %d PDB function signatures", len(signatures))
     rva_map = backend.extract_rvas(binary_path)
     log.info("got %d RVA entries", len(rva_map))
 
     from extractor.merge import merge
     manifest = merge(ast, rva_map, exclude_prefixes=exclude_prefixes,
-                     exclude_substrs=exclude_substrs)
+                     exclude_substrs=exclude_substrs,
+                     pdb_signatures=signatures)
 
     struct_layouts = backend.extract_struct_layouts(binary_path)
     if struct_layouts:
@@ -501,6 +521,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p2.add_argument("--debug-format", dest="debug_format",
                     choices=["dwarf", "pdb"], default=None,
                     help="Force debug-info format (inferred from extension if omitted)") # noqa # fmt: skip
+    p2.add_argument("--pdb-signatures", action="store_true", default=False,
+                    help="Extract function signatures from the PDB (requires PDB debug info)")
     _add_common_args(p2)
 
     return root
@@ -534,7 +556,8 @@ def main(argv: list | None = None) -> None:
             verbose=args.verbose,
             exclude_prefixes=tuple(args.exclude_prefixes),
             exclude_substrs=tuple(args.exclude_substrs),
-            exclude_paths=tuple(args.exclude_paths)
+            exclude_paths=tuple(args.exclude_paths),
+            pdb_signatures=args.pdb_signatures,
         )
 
 
