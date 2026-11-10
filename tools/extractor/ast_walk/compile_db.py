@@ -184,6 +184,13 @@ def _strip_non_flags(argv: List[str], file_path: str) -> List[str]:
         if skip_next:
             skip_next = False
             continue
+        if arg in ("-Winvalid-pch", "-Xclang"):
+            continue
+        if arg in ("-include-pch",):
+            skip_next = True
+            continue
+        if arg.endswith(".pch"):
+            continue
         if arg in ("-o", "--output"):
             skip_next = True
             continue
