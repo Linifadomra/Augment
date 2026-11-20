@@ -12,7 +12,11 @@
 #else
   #define AUGTEST_EXPORT
   #define AUGMENT_EXPORT __attribute__((visibility("default")))
-  #define AUGMENT_NOINLINE __attribute__((noinline))
+  #if defined(__GNUC__) && !defined(__clang__)
+    #define AUGMENT_NOINLINE __attribute__((noinline, noclone))
+  #else
+    #define AUGMENT_NOINLINE __attribute__((noinline))
+  #endif
   #define AUGMENT_FORCEINLINE __attribute__((always_inline))
 #endif
 
