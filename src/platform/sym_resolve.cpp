@@ -206,7 +206,7 @@ namespace augment::plat {
 namespace {
 
 struct image_syms {
-    const Elf64_Sym* syms  = nullptr;
+    const ElfW(Sym)* syms  = nullptr;
     const char*      strs  = nullptr;
     size_t           count = 0;
     uintptr_t        bias  = 0;
@@ -239,19 +239,19 @@ image_syms load_image() {
     }
     std::fclose(f);
 
-    auto* eh = reinterpret_cast<const Elf64_Ehdr*>(buf);
+    auto* eh = reinterpret_cast<const ElfW(Ehdr)*>(buf);
     if (!eh->e_shoff || !eh->e_shnum) { std::free(buf); return out; }
 
-    auto* sh = reinterpret_cast<const Elf64_Shdr*>(buf + eh->e_shoff);
-    const Elf64_Shdr* symtab = nullptr;
+    auto* sh = reinterpret_cast<const ElfW(Shdr)*>(buf + eh->e_shoff);
+    const ElfW(Shdr)* symtab = nullptr;
     for (uint16_t i = 0; i < eh->e_shnum; ++i)
         if (sh[i].sh_type == SHT_SYMTAB) { symtab = &sh[i]; break; }
     if (!symtab) { std::free(buf); return out; }
 
-    const Elf64_Shdr& strtab = sh[symtab->sh_link];
-    out.syms  = reinterpret_cast<const Elf64_Sym*>(buf + symtab->sh_offset);
+    const ElfW(Shdr)& strtab = sh[symtab->sh_link];
+    out.syms  = reinterpret_cast<const ElfW(Sym)*>(buf + symtab->sh_offset);
     out.strs  = reinterpret_cast<const char*>(buf + strtab.sh_offset);
-    out.count = symtab->sh_size / sizeof(Elf64_Sym);
+    out.count = symtab->sh_size / sizeof(ElfW(Sym));
     out.bias  = load_bias();
     out.ok    = true;
     return out;
@@ -277,7 +277,7 @@ void* sym_resolve(const char* symbol) {
     if (!img.ok) return nullptr;
 
     for (size_t i = 0; i < img.count; ++i) {
-        const Elf64_Sym& s = img.syms[i];
+        const ElfW(Sym)& s = img.syms[i];
         if (s.st_value == 0 || s.st_name == 0) continue;
         if (name_matches(img.strs + s.st_name, symbol))
             return reinterpret_cast<void*>(img.bias + s.st_value);
@@ -305,7 +305,7 @@ uint64_t func_gap(void* target) {
     uint64_t at   = reinterpret_cast<uint64_t>(target);
     uint64_t best = UINT64_MAX;
     for (size_t i = 0; i < img.count; ++i) {
-        const Elf64_Sym& s = img.syms[i];
+        const ElfW(Sym)& s = img.syms[i];
         if (s.st_value == 0) continue;
         uint64_t addr = img.bias + s.st_value;
         if (addr > at && addr - at < best) best = addr - at;
