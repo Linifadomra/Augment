@@ -4,10 +4,6 @@ if(MSVC)
     add_link_options($<$<CONFIG:Release>:/DEBUG>)
 endif()
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64" AND NOT MSVC)
-    add_compile_options(-mno-avx -mno-avx2)
-endif()
-
 add_executable(test_chain test_chain.cpp)
 target_link_libraries(test_chain PRIVATE augment)
 target_include_directories(test_chain PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
